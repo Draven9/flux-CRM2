@@ -117,7 +117,7 @@ export function CampoDoIconeDaAba({ iconeDaCamada }: Props) {
 
   return (
     <div className="space-y-2" data-campo-do-icone-da-aba="">
-      <Label htmlFor="icone-da-aba">{t("Ícone da aba (favicon)")}</Label>
+      <Label htmlFor="icone-da-aba">{t("Ícone do aplicativo e do navegador")}</Label>
       <div className="flex flex-wrap items-center gap-3">
         <div
           data-previa-do-icone={iconeGravado ? "arquivo" : "desenhado"}
@@ -147,15 +147,22 @@ export function CampoDoIconeDaAba({ iconeDaCamada }: Props) {
           className="max-w-xs text-sm file:mr-3 file:cursor-pointer file:rounded-sm file:border file:border-border file:bg-surface-elevated file:px-3 file:py-1.5 file:text-sm"
         />
         {iconeGravado ? (
-          <Button type="button" variant="outline" onClick={() => void remover()} disabled={enviando}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void remover()}
+            disabled={enviando}
+          >
             {t("Remover ícone")}
           </Button>
         ) : null}
       </div>
       <p className="text-xs text-text-muted">
-        {t("Imagem quadrada, de preferência 64×64 ou maior. PNG ou JPG, até")}{" "}
+        {t("Imagem quadrada, de preferência 512×512 ou maior. PNG ou JPG, até")}{" "}
         {Math.round(TAMANHO_MAXIMO_DO_LOGO / 1024)}{" "}
-        {t("KB. Sem ícone próprio, a aba mostra a inicial do nome sobre a cor da marca.")}
+        {t(
+          "KB. Usada no navegador e no aplicativo instalado. Sem arquivo, mantém o desenho da marca.",
+        )}
       </p>
     </div>
   );

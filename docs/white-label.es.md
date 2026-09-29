@@ -1,4 +1,4 @@
-<!-- traduzido-de: docs/white-label.md@af68c76ce1f4 -->
+<!-- traduzido-de: docs/white-label.md@6a25e768d53e -->
 
 [🇧🇷 Português](white-label.md) · [🇺🇸 English](white-label.en.md) · 🇪🇸 Español
 
@@ -18,7 +18,7 @@ El color es **derivado**, no aplicado en crudo: de un hex salen once tonos en lo
 
 **El logo también.** En la misma pantalla **subes el archivo** — PNG o JPG, hasta 512 KB. Va al almacenamiento de tu propia instalación y pasa a valer al instante, sin reiniciar nada y sin que tengas que alojar la imagen en ningún sitio. Altura fija y ancho libre, para no deformar un arte de cualquier proporción; sin logo, el nombre aparece como texto.
 
-**Y el ícono de la pestaña (favicon).** Justo debajo del logo, el campo **Ícono de la pestaña (favicon)** recibe una imagen cuadrada — PNG o JPG, hasta 512 KB, preferiblemente de 64×64 o mayor. Aparece en la pestaña del navegador de todas las pantallas de la instalación, incluido el acceso. Sin ícono propio, la pestaña muestra la inicial del nombre sobre el color de la marca; quitar el ícono vuelve a ese dibujo. El ícono es de la instalación, no de cada organización: la pestaña es una sola. El ícono de app instalada (el manifiesto del navegador) sigue siendo el dibujado.
+**Y el ícono de la aplicación y del navegador.** Debajo del logo, este campo acepta un PNG o JPG cuadrado de hasta 512 KB, preferiblemente 512×512 o mayor. La misma imagen aparece en las pestañas, incluido el acceso, y en la aplicación instalada. El manifiesto ofrece PNG de 192×192 y 512×512, renderizados desde el archivo limitado de la instalación en Storage; nunca se buscan URL arbitrarias. Sin archivo válido, conserva el símbolo del producto o la inicial de la marca. Quitar el archivo restaura ese dibujo. Es la marca de la instalación, no de cada organización. El navegador puede guardar una instalación anterior en caché; reinstala la aplicación para comprobar un nuevo ícono.
 
 El archivo se acepta **por sus bytes, no por su extensión**. Renombrar un `.svg` a `.png` no engaña: el sistema lee el contenido, lo rechaza y dice por qué. Esto no es quisquillosidad — SVG es XML y puede llevar script, que se ejecutaría si alguien abriera la imagen directamente por su dirección, en un bucket que es público por necesidad.
 

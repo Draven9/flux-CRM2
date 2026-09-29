@@ -9,6 +9,8 @@ export interface InstalledSkill {
   description: string;
   version_id: string;
   source: "manual" | "catalog";
+  /** True quando o catálogo publicou versão nova depois da cópia da org (só p/ source 'catalog'). */
+  versao_nova_catalogo: boolean;
   updated_at: string;
 }
 export interface CatalogSkill {

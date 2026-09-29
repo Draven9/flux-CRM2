@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
-import { PuzzlePiece, UploadSimple, DownloadSimple, Trash, Info, PencilSimple } from "@/lib/ui/icons";
+import { PuzzlePiece, UploadSimple, DownloadSimple, Trash, Info, PencilSimple, ArrowsClockwise } from "@/lib/ui/icons";
 import { EditorDeSkill } from "./_components/EditorDeSkill";
 import { usePermission } from "@/hooks/auth/AuthProvider";
 import {
@@ -68,6 +68,24 @@ export function SkillsClient({ initialState }: Props) {
     uninstall.mutate(name, {
       onSuccess: () => {
         toast.success(`Skill "${name}" ${t("desinstalada.")}`);
+        setPendingName(null);
+      },
+      onError: (err) => {
+        showApiError(err);
+        setPendingName(null);
+      },
+    });
+  }
+
+  // Catalogo publicou versão nova após a cópia da org: adotar re-faz o install
+  // (POST /install), que aponta o ponteiro da org para a versão ATUAL de
+  // plataforma numa cópia NOVA — a versão que a org tinha fica intacta no
+  // histórico, a releitura carrega o texto novo.
+  function handleAdotarVersao(name: string) {
+    setPendingName(name);
+    install.mutate(name, {
+      onSuccess: () => {
+        toast.success(t("Versão nova adotada — a sua cópia agora usa a versão mais recente do catálogo."));
         setPendingName(null);
       },
       onError: (err) => {
@@ -146,6 +164,27 @@ export function SkillsClient({ initialState }: Props) {
                     </span>
                   </div>
                   {skill.description && <p className="text-text-muted">{skill.description}</p>}
+                  {skill.versao_nova_catalogo && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-accent bg-accent-soft p-2.5 text-xs">
+                      <span className="flex items-center gap-1.5 text-text">
+                        <Info className="shrink-0" aria-hidden />
+                        {t(
+                          "Há uma versão nova desta skill no catálogo. Ao adotar, ela passa a ser a ativa; a versão atual continua no Histórico de versões e pode ser restaurada.",
+                        )}
+                      </span>
+                      {canManage && (
+                        <Button
+                          size="sm"
+                          disabled={install.isPending && pendingName === skill.name}
+                          onClick={() => handleAdotarVersao(skill.name)}
+                          className="w-full sm:w-auto"
+                        >
+                          <ArrowsClockwise />
+                          {install.isPending && pendingName === skill.name ? t("Adotando…") : t("Adotar versão nova")}
+                        </Button>
+                      )}
+                    </div>
+                  )}
                   {canManage && (
                     <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
                       <Button

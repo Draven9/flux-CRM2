@@ -1,7 +1,14 @@
 import { InterfaceRefresh } from "@/hooks/auth/InterfaceRefresh";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { isMfaEnrolled, loadAuthUser, requiresMfa, resolveActiveOrg } from "@/lib/auth/server";
+import {
+  isMfaEnrolled,
+  loadAuthUser,
+  organizacaoEscolhida,
+  requiresMfa,
+  resolveActiveOrg,
+} from "@/lib/auth/server";
+import { organizacaoOpera } from "@/lib/tenants/estado";
 import { DEFAULT_VISIBILITY_MODE, roleAtLeast, type VisibilityMode } from "@/lib/auth/types";
 import { clientePelaAgendaLigado } from "@/lib/schemas/settings";
 import { AuthProvider } from "@/hooks/auth/AuthProvider";
@@ -15,6 +22,7 @@ import { resolverMarcaDaOrganizacao } from "@/lib/branding/organizacao";
 import { env } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { modulosLigados } from "@/lib/instalacao/modulos";
+import { capacidadesLigadas } from "@/lib/organizacao/capacidades";
 import {
   ImpersonateBanner,
 } from "@/components/app/ImpersonateBanner";
@@ -30,6 +38,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user) redirect("/login");
 
   let activeOrg = await resolveActiveOrg(user);
+
+  // Organização suspensa: `resolveActiveOrg` não a devolve (nada opera nela),
+  // mas a pessoa precisa SABER que a empresa foi suspensa — não cair na tela de
+  // "sem organização" nem na de acesso revogado.
+  if (!activeOrg && !user.support) {
+    const escolhida = await organizacaoEscolhida(user);
+    if (escolhida && !organizacaoOpera(escolhida.status)) redirect("/account-suspended");
+  }
 
   // Sem organização ativa existem DOIS estados, e eles pedem telas opostas:
   //
@@ -123,6 +139,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       // Mesma linha de `settings` já lida acima — nenhuma consulta a mais.
       cliente_pela_agenda: clientePelaAgendaLigado(orgRow?.settings),
       modulos_ligados: modulos,
+      // Mesma linha de `settings` já lida acima — nenhuma consulta a mais.
+      capacidades_ligadas: capacidadesLigadas(orgRow?.settings, modulos),
     };
 
     // `marcaDaInstalacao()` é memoizada por TTL no PROCESSO (`lib/branding/

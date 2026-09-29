@@ -42,6 +42,7 @@ describe("varredura de silêncio", () => {
       ],
       loadSilentContactIds: async () => ["contato-com-retorno", "outro"],
       loadContatosComRetornoVivo: async () => comRetorno,
+      loadContactIdsEmCooldown: async () => new Set<string>(),
       loadTriggerNode: async () => ({ id: "inicio", pedeAgente: false }),
       insertEnrollment: insert,
     };
