@@ -7,32 +7,46 @@
  * `ThemeToggle`, `useTheme`, `setTheme` ou `data-theme`.
  *
  * O efeito não era "falta um botão". O atalho `mod+shift+l` é registrado DENTRO
- * do `ThemeToggle`, então sem o componente montado não havia botão NEM atalho:
- * o único caminho era sair para `/app`, trocar lá, e voltar. E quem cai no admin
- * primeiro não é um caso raro — o `install.sh` cria o dono da instalação como
+ * do componente, então sem ele montado não havia botão NEM atalho: o único
+ * caminho era sair para `/app`, trocar lá, e voltar. E quem cai no admin
+ * primeiro não é caso raro — o `install.sh` cria o dono da instalação como
  * platform admin, então é a primeira tela de muita gente numa VPS nova.
  *
- * Por que o teste é sobre a TARJA e não sobre o `AdminShell`: o `AdminShell` não
- * tem barra de topo no desktop (o único `<header>` dele é `lg:hidden`), e a tarja
- * do Modo Plataforma é o único elemento persistente do topo em todas as larguras.
- * Se alguém mover o controle para outro lugar, este teste fica vermelho e a
- * mudança passa a ser deliberada — que é o ponto.
+ * ── Por que o controle mudou de lugar em 29/09/2026 ──────────────────────────
  *
- * LIMITE DECLARADO: isto prova que o controle EXISTE e que ele cicla o tema.
- * NÃO prova que a tarja está montada em toda tela de admin — quem monta é
- * `app/admin/(protected)/layout.tsx`, pelo `AdminShell`, e guardar esse elo
- * exigiria montar um layout async que chama `requirePlatformAdmin`. É o mesmo
- * limite que `admin-shell-tooltip.test.tsx` já declara.
+ * A primeira versão o pôs na tarja do Modo Plataforma, por ser o único elemento
+ * persistente do topo em todas as larguras. Na prática não foi achado: 28px sem
+ * rótulo, colado no canto superior direito da janela — o mesmo canto em que
+ * extensão de navegador desenha — e, no estado `system`, com um ícone de MONITOR,
+ * que não lê como tema para quem procura sol ou lua. Relato do dono do produto,
+ * na produção: "ele ficou em cima do outro ícone, por isso não achei".
  *
- * Sabotagem que confirma que a guarda vigia: remover `<ThemeToggle />` de
- * `components/admin/PlatformModeBanner.tsx` deixa os dois casos vermelhos.
+ * Agora mora no rodapé do `AdminSidebar`, no mesmo formato das outras linhas de
+ * lá: ícone + PALAVRA, alvo da largura inteira. Daí o caso abaixo cobrar o nome
+ * acessível vindo do TEXTO, e não de um `aria-label` — a diferença é justamente
+ * o que o usuário consegue ler na tela.
+ *
+ * LIMITE DECLARADO: isto prova que o controle EXISTE, que ele CICLA e que o
+ * ATALHO responde. NÃO prova que a barra lateral está montada em toda tela de
+ * admin — quem monta é `app/admin/(protected)/layout.tsx`, pelo `AdminShell`, e
+ * guardar esse elo exigiria um layout async que chama `requirePlatformAdmin`.
+ * Mesmo limite que `admin-shell-tooltip.test.tsx` declara.
+ *
+ * Sabotagem que confirma que a guarda vigia: remover `<ThemeRow />` do rodapé de
+ * `components/admin/AdminSidebar.tsx` deixa os três casos vermelhos.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { PlatformModeBanner } from "@/components/admin/PlatformModeBanner";
+import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { ThemeProvider } from "@/lib/theme";
+
+// O `AdminSidebar` é client component e chama `usePathname` para marcar o item
+// ativo. Mesmo mock de `admin-shell-tooltip.test.tsx`.
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/admin/dashboard",
+}));
 
 // Mesmo stub local de `lib/theme.test.tsx`: o jsdom não implementa matchMedia,
 // e o `ThemeProvider` o consulta para resolver o tema "system".
@@ -52,36 +66,48 @@ afterEach(() => {
   }
 });
 
-const tarja = () =>
+const rodape = () =>
   render(
     <ThemeProvider>
-      <PlatformModeBanner />
+      <AdminSidebar userEmail="dono@exemplo.com" />
     </ThemeProvider>,
   );
 
+/** O controle, achado como o usuário o acha: pela palavra visível. */
+const controle = () => screen.getByRole("button", { name: /^Tema\b/i });
+
 describe("Admin Plataforma — troca de tema", () => {
-  it("a tarja do Modo Plataforma oferece o controle de tema", () => {
-    tarja();
-    // O `aria-label` do `ThemeToggle` começa por "Tema: " e traz o estado
-    // atual. Casar pelo prefixo em vez do texto inteiro evita que renomear o
-    // estado ("system" → "sistema") derrube a guarda por motivo errado.
-    expect(screen.getByRole("button", { name: /^Tema: /i })).toBeInTheDocument();
+  it("o rodapé da barra lateral oferece o controle, com PALAVRA visível", () => {
+    rodape();
+    // `getByRole` com `name` casa o nome ACESSÍVEL, que aqui vem do texto do
+    // `<span>` — é o mesmo que os olhos leem. Um ícone sem rótulo não passaria,
+    // e foi exatamente o que não foi achado na produção.
+    const botao = controle();
+    expect(botao).toBeInTheDocument();
+    expect(botao.textContent?.trim()).toMatch(/^Tema\b/i);
   });
 
   it("o controle CICLA de fato — não é um botão decorativo", async () => {
-    // Sem isto, um `<Button>` sem `onClick` passaria no caso acima: a guarda
-    // mediria a presença de um elemento, não a existência da capacidade.
+    // Sem isto, um botão sem `onClick` passaria no caso acima: a guarda mediria
+    // a presença de um elemento, não a existência da capacidade.
     const usuario = userEvent.setup();
-    tarja();
+    rodape();
 
-    const botao = screen.getByRole("button", { name: /^Tema: /i });
-    const antes = botao.getAttribute("aria-label");
+    const antes = controle().textContent;
+    await usuario.click(controle());
+    expect(controle().textContent).not.toBe(antes);
+  });
 
-    await usuario.click(botao);
+  it("o atalho Ctrl+Shift+L responde no admin", async () => {
+    // Esta guarda existe porque o defeito VOLTOU. O atalho é registrado dentro
+    // do componente, então mover o controle de casca sem levar o `useHotkeys`
+    // junto o apaga em silêncio — aconteceu em 29/09/2026, ao tirar o controle
+    // da tarja. Um teste que só olha o clique não teria visto.
+    const usuario = userEvent.setup();
+    rodape();
 
-    const depois = screen
-      .getByRole("button", { name: /^Tema: /i })
-      .getAttribute("aria-label");
-    expect(depois).not.toBe(antes);
+    const antes = controle().textContent;
+    await usuario.keyboard("{Control>}{Shift>}L{/Shift}{/Control}");
+    expect(controle().textContent).not.toBe(antes);
   });
 });

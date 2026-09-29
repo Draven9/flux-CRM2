@@ -1,7 +1,6 @@
 "use client";
 import Link from "next/link";
 import { Buildings } from "@/lib/ui/icons";
-import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { useT } from "@/hooks/i18n/useT";
 
 /**
@@ -40,10 +39,11 @@ export function PlatformModeBanner() {
           <span className="hidden opacity-80 sm:inline">{t("— operação cross-tenant")}</span>
         </div>
         <div className="flex items-center gap-1">
-          {/* 40px de tarja não comportam os 44px de alvo de toque do `size="icon"`.
-              O mesmo já valia para o link ao lado, que é `text-xs`: quem opera o
-              modo plataforma está num desktop, com cursor. */}
-          <ThemeToggle className="h-7 w-7 text-warning-fg lg:h-7 lg:w-7" />
+          {/* A troca de tema saiu DAQUI e foi para o rodapé do `AdminSidebar`.
+              Aqui ela era um ícone de 28px sem rótulo, encostado no canto
+              superior direito da janela — o mesmo canto em que extensão de
+              navegador desenha —, e no estado `system` o ícone é um monitor,
+              que não lê como tema. Relatado como "não achei". */}
           <Link
             href="/app"
             className="rounded-md px-2 py-1 text-xs font-medium underline-offset-2 hover:underline"
