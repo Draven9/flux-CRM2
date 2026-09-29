@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { Buildings } from "@/lib/ui/icons";
+import { ThemeRow } from "@/components/theme/theme-toggle";
 import { useT } from "@/hooks/i18n/useT";
 
 /**
@@ -38,12 +39,19 @@ export function PlatformModeBanner() {
           <span className="font-semibold tracking-tight">{t("MODO PLATAFORMA")}</span>
           <span className="hidden opacity-80 sm:inline">{t("— operação cross-tenant")}</span>
         </div>
-        <div className="flex items-center gap-1">
-          {/* A troca de tema saiu DAQUI e foi para o rodapé do `AdminSidebar`.
-              Aqui ela era um ícone de 28px sem rótulo, encostado no canto
-              superior direito da janela — o mesmo canto em que extensão de
-              navegador desenha —, e no estado `system` o ícone é um monitor,
-              que não lê como tema. Relatado como "não achei". */}
+        <div className="flex items-center gap-2">
+          {/* ⚠️ O CONTROLE FICA AQUI, E NÃO NO RODAPÉ DA LATERAL.
+              A tentativa de 29/09/2026 o moveu para o rodapé do `AdminSidebar`
+              e ele sumiu de vez: aquele `<aside>` NÃO trava altura (não tem
+              `h-screen` nem `sticky`, ao contrário do `components/shell/
+              Sidebar.tsx:395` do tenant), então a lista cresce, o
+              `overflow-y-auto` do `<nav>` nunca age e o rodapé inteiro — tema,
+              "Voltar pra app" e e-mail — cai para fora da janela.
+
+              O que estava errado na PRIMEIRA versão daqui não era o lugar: era
+              ser um ícone de 28px sem rótulo. Por isso agora é `ThemeRow`, com
+              a palavra do tema atual, e não `ThemeToggle`. */}
+          <ThemeRow className="w-auto gap-1.5 text-warning-fg hover:bg-warning/15 hover:text-warning-fg" />
           <Link
             href="/app"
             className="rounded-md px-2 py-1 text-xs font-medium underline-offset-2 hover:underline"

@@ -24,7 +24,6 @@ import {
 } from "@/lib/ui/icons";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { ThemeRow } from "@/components/theme/theme-toggle";
 import { SimboloDoProduto } from "@/components/branding/MarcaDoProduto";
 import { marcaEhADoProduto } from "@/lib/branding";
 import { useMarcaDaInstalacao } from "@/lib/branding/contexto";
@@ -161,14 +160,6 @@ export function AdminSidebar({ userEmail, variant = "desktop" }: AdminSidebarPro
         })}
       </nav>
       <div className="space-y-2 border-t p-3">
-        {/* O tema mora AQUI, e não mais na tarja do Modo Plataforma.
-            Na tarja ele era um ícone de 28px sem rótulo, encostado na borda
-            superior direita da janela — onde as extensões do navegador também
-            desenham. Foi relatado como "não achei", e o ícone do estado
-            `system` (um monitor) não lê como controle de tema para quem
-            procura sol ou lua. Aqui ele herda o formato das outras linhas do
-            rodapé: ícone + PALAVRA, alvo da largura inteira. */}
-        <ThemeRow />
         <Link
           href="/app"
           className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground"
