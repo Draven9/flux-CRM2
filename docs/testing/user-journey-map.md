@@ -1252,6 +1252,39 @@ espaço e acento, que era o gatilho do defeito #6.
 | 16 | `lib/audit/index.ts` | Falha de audit só fazia `console.error` — foi o que manteve #15 invisível | doutrina exige alerta no Sentry |
 | 17 | crons de follow-up/snooze | **95% do audit log** era batida de cron vazia (1.175 de 1.236 linhas em ~9h paradas) numa tabela append-only com retenção de 5 anos | contagem por `action` |
 
+## J35 — Achar onde se liga cada recurso opcional `[P1]` (2026-09-28)
+
+**Origem:** pedido do mantenedor (doc 73; desenho no doc 80) — "até agora não
+entendi onde ficam os lugares para ativar/desativar". Os módulos se ligavam numa
+tela chamada "Comportamento", as chaves da empresa em pelo menos nove telas, e
+os recursos que dependem do servidor em tela nenhuma.
+
+| Caso | Spec | Estado |
+|---|---|---|
+| Admin da empresa chega a Configurações › Recursos opcionais pelo hub, vê a lista e o **Ajustar** de "A conversa fica com quem atendeu" o leva a Distribuição de atendimento | `tests/e2e/recursos-opcionais.spec.ts` | CI (PARTE_2) |
+| Dono do servidor acha **Recursos opcionais** no menu do Admin; a tela tem Módulos, Comportamento e Depende do servidor (só leitura, "configurado"/"não configurado") | idem | CI (PARTE_2) |
+| Módulo/porta novo fora da lista reprova | `tests/unit/recursos-opcionais-catalogo.test.ts` | unit |
+
+**Não coberto pela tela:** gerente vendo a lista sem os botões de telas de admin
+(regra no `page.tsx`, sem spec); telefonia por SIP é "não dá para ver daqui" —
+ela vive nos contêineres, fora do alcance do app.
+
+## J36 — Perguntar ao acervo sem sair da conversa `[P1]` (2026-09-28)
+
+**Origem:** #1869 (F1+F2), contribuição de @webtecnica no #1877. O atendente
+consulta o material da empresa pela caixa "Acervo" no painel da conversa, com a
+mesma busca que a IA usa; a pergunta vira linha em `knowledge_searches` com
+`author_kind='human'`, e a Evolução a mostra num gráfico próprio.
+
+| Caso | Spec | Estado |
+|---|---|---|
+| Atendente abre a conversa, pergunta na caixa "Acervo" e recebe o diagnóstico (acervo vazio, ou 409 de chave ausente), nunca o erro genérico | `tests/e2e/busca-na-conversa.spec.ts` | CI (PARTE_3) |
+| 429 por pessoa/organização, pergunta > 1000 caracteres, agentId não-uuid, 409 sem chave | `app/api/v1/ai/knowledge/busca/route.test.ts` | unit |
+| Busca da equipe fora das lacunas do agente e numa série própria | `lib/ai/evolution/aggregate.test.ts` | unit |
+
+**Não coberto:** a busca com material indexado e chave de embedding real (nenhum
+e2e do CI tem chave); o gráfico "Consultas da equipe ao acervo" em tela.
+
 ## Jornadas exercitadas (instalação final, virgem)
 
 | Jornada | Resultado |
@@ -1708,6 +1741,24 @@ grupo IA já usava.
 grampeado no `clientHeight`, então "excesso 0" e "sobra 200px" dão o MESMO número.
 Quem quiser saber quanta folga restou tem de medir o `bottom` do último filho
 contra a caixa de conteúdo da `<nav>` — foi assim que os 19px saíram.
+
+## Os contadores do menu: Casos e a Fila (2026-09-27)
+
+Origem: numa loja que vende pelo WhatsApp, a IA abriu um caso e passou duas
+conversas para a equipe numa manhã, e o dono só soube abrindo cada tela e
+procurando. «Casos» sobe para o menu da IA com o número de casos em
+`awaiting_human`, e «Inbox» ganha o número da aba Fila. Para o menu seguir
+cabendo em 1280×900 — a folga medida acima é de 19px, menos de uma linha —,
+«Roteadores» sai do menu no mesmo passo e fica no hub «Ver tudo em IA».
+
+| caso | prioridade | estado |
+|---|---|---|
+| O número de Casos é o da lista de Casos (itens «Aguardando você»), sobe com um caso novo e desce quando ele fecha | `[P1]` | **PASS** (2026-09-27), `tests/e2e/contadores-do-menu.spec.ts` — semeia o próprio caso. Medido: 1 → 2 com o caso, de volta a 1 ao fechar. Evidência: `evidence/contadores-no-menu/01-casos-com-contador.png`, `evidence/contadores-no-menu/02-casos-depois-de-fechar.png` e `evidence/contadores-no-menu/medidas-casos.json` |
+| O número de Inbox é o da aba Fila e desce quando a conversa sai dela | `[P1]` | **PASS** (2026-09-27), mesma spec: 3 na aba e no menu, 2 depois. Evidência: `evidence/contadores-no-menu/03-inbox-com-contador-da-fila.png`, `evidence/contadores-no-menu/04-inbox-depois-de-sair-da-fila.png` e `evidence/contadores-no-menu/medidas-fila.json` |
+| Zero não desenha nada | `[P1]` | `tests/unit/contador-de-casos.test.tsx` e `tests/unit/contador-da-fila.test.tsx`; na spec, quando a organização fica sem pendência |
+| O selo mora dentro do item e não quebra a linha | `[P1]` | **PASS**, medido por `getBoundingClientRect` na spec: selo contido no item, altura do item **28px** = a do vizinho sem selo |
+| O menu continua cabendo em 900px com Casos no lugar de Roteadores | `[P1]` | **PASS**, `tests/e2e/navegacao.spec.ts` (o caso da dobra); a folga medida pela spec nova segue **19px**, sem rolar |
+| Roteadores continua tendo porta (DoD 14) | `[P1]` | `tests/unit/navegacao-completude.test.ts` e o hub «Ver tudo em IA» |
 
 ## O inbox em tempo real — o defeito que veio de fora (2026-08-24)
 

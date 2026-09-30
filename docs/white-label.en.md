@@ -1,4 +1,4 @@
-<!-- traduzido-de: docs/white-label.md@af68c76ce1f4 -->
+<!-- traduzido-de: docs/white-label.md@6a25e768d53e -->
 
 [🇧🇷 Português](white-label.md) · 🇺🇸 English · [🇪🇸 Español](white-label.es.md)
 
@@ -18,7 +18,7 @@ The color is **derived**, not applied raw: one hex yields eleven shades in both 
 
 **The logo too.** On the same screen you **upload the file** — PNG or JPG, up to 512 KB. It goes to your own installation's storage and takes effect right away, with no restart and without you hosting an image anywhere. Fixed height, free width, so that artwork of any proportion is not distorted; with no logo, the name shows up as text.
 
-**And the browser tab icon (favicon).** Right below the logo, the **Tab icon (favicon)** field takes a square image — PNG or JPG, up to 512 KB, ideally 64×64 or larger. It shows up in the browser tab of every screen of the installation, sign-in included. With no icon of your own, the tab shows the first letter of the name on the brand color; removing the icon goes back to that drawing. The icon belongs to the installation, not to each organization: there is only one tab. The installed-app icon (the browser manifest) remains the drawn one.
+**And the application and browser icon.** Below the logo, this field accepts a square PNG or JPG up to 512 KB, preferably 512×512 or larger. The same image identifies browser tabs, including login, and the installed app. The manifest supplies 192×192 and 512×512 PNGs, rendered from the bounded installation file in Storage; arbitrary URLs are never fetched. Without a valid file, the product symbol or brand initial remains. Removing the file restores that drawing. This is installation branding, not per-organization branding. Browsers may cache an existing installation; reinstall the app to check a new icon.
 
 The file is accepted **by its bytes, not by its extension**. Renaming an `.svg` to `.png` fools nothing: the system reads the content, refuses it and says why. This is not fussiness — SVG is XML and can carry script, which would run if someone opened the image directly by its address, in a bucket that is public by necessity.
 

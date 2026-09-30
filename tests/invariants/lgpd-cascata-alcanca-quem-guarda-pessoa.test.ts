@@ -55,8 +55,11 @@ const DIVIDA_LGPD_CONHECIDA: Record<string, string> = {
     "Achado do levantamento 13 §2 (QAVivo/maestro). Guarda title e notes do compromisso. " +
     "Conserto DESPACHADO ao Arquiteto — sai desta lista no mesmo commit que acrescentar a tabela à cascata.",
   lead_notes:
-    "Anotação livre do atendente SOBRE o contato (coluna body). Dívida anterior à agenda; " +
-    "nenhum commit a declarou. Sai quando o cascade a alcançar.",
+    "Memória livre do agente SOBRE o contato (headline/body). Dívida anterior à agenda. " +
+    "Desde o #1958 a camada de app a redige (lib/lgpd/cascata.ts passo 5: na hora pela rota " +
+    "de anonimizar, na varredura diária do cron data-retention para o pedido formal), mas " +
+    "esta função e os gatilhos de contacts ainda não. Sai quando a virada de is_anonymized " +
+    "(desenho da 0391) ou esta função a alcançar.",
   crm_tasks:
     "Migration 0210 (extração do PR #418). A tabela guarda `title` — texto livre que " +
     "na prática nomeia a pessoa (\"Ligar para Fulano confirmar o orçamento\"). " +

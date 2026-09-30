@@ -101,11 +101,59 @@ export interface ClienteDaCascata {
   };
 }
 
+/** O texto-sentinela que marca uma nota de memória do agente JÁ redigida. */
+export const NOTA_REDIGIDA = "(anonimizado)";
+
+/**
+ * Redação do `tool_calls` de uma run (issue #1957). Cada passo vira
+ * `{ step?, tool_name?, redacted: true, tool_calls: [{ tool_name }] }`: fica
+ * QUAIS ferramentas rodaram e em que passo — a trilha do que o agente fez —, e
+ * sai o texto do modelo, os argumentos e os resultados, que é onde mora o nome
+ * e o que a pessoa escreveu (forma em `lib/ai/runtime/serialize.ts`).
+ *
+ * Idempotência: o marcador de "já redigida" é `redacted: true` em TODO passo.
+ * Não dá para usar o vácuo: o `tool_calls` de uma run que nunca chamou
+ * ferramenta é `[]` de nascença (`not null default '[]'`), e reescrevê-lo seria
+ * perpétuo e vazio — `[]` não tem passo pendente e nunca é tocado.
+ */
+export function redigirToolCalls(toolCalls: unknown): unknown[] {
+  const passos = Array.isArray(toolCalls) ? (toolCalls as unknown[]) : [];
+  return passos.map((p) => {
+    const passo = (p ?? {}) as { step?: unknown; tool_name?: unknown; tool_calls?: unknown };
+    const chamadas = Array.isArray(passo.tool_calls) ? (passo.tool_calls as unknown[]) : [];
+    return {
+      ...(typeof passo.step === "number" ? { step: passo.step } : {}),
+      ...(typeof passo.tool_name === "string" ? { tool_name: passo.tool_name } : {}),
+      redacted: true,
+      tool_calls: chamadas.map((c) => {
+        const nome = (c as { tool_name?: unknown } | null)?.tool_name;
+        return { tool_name: typeof nome === "string" ? nome : "unknown" };
+      }),
+    };
+  });
+}
+
+/** A run ainda tem passo não redigido? `[]` de nascença não tem. */
+export function toolCallsPendentes(toolCalls: unknown): boolean {
+  return (
+    Array.isArray(toolCalls) &&
+    toolCalls.some((p) => (p as { redacted?: unknown } | null)?.redacted !== true)
+  );
+}
+
 export interface ResultadoDaRedacao {
   /** As leads cujo título foi redigido AGORA (não as que já estavam). */
   leadsRedigidas: string[];
   /** Quantas atividades foram redigidas AGORA. */
   atividadesRedigidas: number;
+  /** Quantas notas de memória (lead_notes) foram redigidas AGORA (#1957). */
+  memoriasRedigidas: number;
+  /** Quantas runs de IA tiveram os argumentos de ferramentas redigidos AGORA (#1957). */
+  runsRedigidas: number;
+  /** Quantas linhas de lead_state tiveram next_action/qualification redigidas AGORA (#1957). */
+  estadosRedigidos: number;
+  /** Se o social_identity do contato foi removido AGORA (#1957). */
+  socialIdentidadeRedigida: boolean;
   /**
    * As tabelas que esta execução REALMENTE tocou.
    *
@@ -123,7 +171,14 @@ export interface ResultadoDaRedacao {
 
 /** Houve trabalho? É o que separa uma retomada de um "não faltava nada". */
 export function houveRedacao(r: ResultadoDaRedacao): boolean {
-  return r.leadsRedigidas.length > 0 || r.atividadesRedigidas > 0;
+  return (
+    r.leadsRedigidas.length > 0 ||
+    r.atividadesRedigidas > 0 ||
+    r.memoriasRedigidas > 0 ||
+    r.runsRedigidas > 0 ||
+    r.estadosRedigidos > 0 ||
+    r.socialIdentidadeRedigida
+  );
 }
 
 /**
@@ -250,7 +305,148 @@ export async function completarRedacaoDoContato(
     else tabelas.push("followup_enrollments");
   }
 
-  return { leadsRedigidas, atividadesRedigidas, tabelas, falhas };
+  // ── Passo 5 — MEMÓRIA DO AGENTE (`lead_notes`) — issue #1957 ──
+  //
+  // A cascata redigia o que o humano vê (conversas, leads, atividades) e a
+  // régua — mas NÃO a memória que a IA grava sobre o contato. Medido na issue:
+  // `lead_notes` guarda `headline` + `body` com nome e trechos do que a pessoa
+  // escreveu, e `completarRedacaoDoContato` não passava por ele. Quem pediu
+  // anonimização pela LGPD espera que o dado saia de todo lugar onde o sistema
+  // o guardou — a memória da IA guarda dado pessoal, então é parte do expurgo.
+  //
+  // SELECT antes do UPDATE, como no passo 3 e pelo mesmo motivo: em regime as
+  // notas já estão redigidas, e reescrever seria gravar sobre dado certo em
+  // O marcador de "já redigida" é o próprio `NOTA_REDIGIDA`
+  // — a segunda passada não encontra linha com headline/body original.
+  let memoriasRedigidas = 0;
+  const { data: notaData, error: notaSelErr } = await db
+    .from("lead_notes")
+    .select("id, headline, body")
+    .eq("organization_id", contato.organizationId)
+    .eq("contact_id", contato.id);
+  if (notaSelErr) falhas.push(`lead_notes select: ${notaSelErr.message}`);
+
+  const notasPendentes = ((notaData ?? []) as { id: string; headline: string; body: string }[]).filter(
+    (n) => n.headline !== NOTA_REDIGIDA || n.body !== NOTA_REDIGIDA,
+  );
+  for (const nota of notasPendentes) {
+    const { error } = await db
+      .from("lead_notes")
+      .update({ headline: NOTA_REDIGIDA, body: NOTA_REDIGIDA, embedding: null })
+      .eq("organization_id", contato.organizationId)
+      .eq("id", nota.id);
+    if (error) falhas.push(`lead_notes ${nota.id}: ${error.message}`);
+    else memoriasRedigidas += 1;
+  }
+  if (memoriasRedigidas > 0) tabelas.push("lead_notes");
+
+  // ── Passo 6 — REGISTRO DE EXECUÇÃO DA IA (`ai_agent_runs.tool_calls`) ──
+  //
+  // Issue #1957. `tool_calls` (jsonb) guarda os argumentos passados às
+  // ferramentas — nome do contato e trechos do que a pessoa escreveu — e
+  // nenhuma etapa da cascata passava por ele. Cada run do contato é redigida
+  // por `redigirToolCalls`, que guarda o nome das ferramentas e apaga o resto.
+  //
+  // Idempotência: ver o cabeçalho de `redigirToolCalls`. O `[]` de nascença e a
+  // run já redigida não são tocados. Um UPDATE por run, porque o conteúdo
+  // redigido é por run (os nomes das ferramentas diferem).
+  let runsRedigidas = 0;
+  const { data: runData, error: runSelErr } = await db
+    .from("ai_agent_runs")
+    .select("id, tool_calls")
+    .eq("organization_id", contato.organizationId)
+    .eq("contact_id", contato.id);
+  if (runSelErr) falhas.push(`ai_agent_runs select: ${runSelErr.message}`);
+
+  const runs = ((runData ?? []) as { id: string; tool_calls: unknown }[]).filter((run) =>
+    toolCallsPendentes(run.tool_calls),
+  );
+  for (const run of runs) {
+    const { error } = await db
+      .from("ai_agent_runs")
+      .update({ tool_calls: redigirToolCalls(run.tool_calls) })
+      .eq("organization_id", contato.organizationId)
+      .eq("id", run.id);
+    if (error) falhas.push(`ai_agent_runs ${run.id}: ${error.message}`);
+    else runsRedigidas += 1;
+  }
+  if (runsRedigidas > 0) tabelas.push("ai_agent_runs");
+
+  // ── Passo 7 — ESTADO DA LEAD (`lead_state.next_action` / `qualification`) ──
+  //
+  // Issue #1957. `next_action` (texto) e `qualification` (jsonb) são texto
+  // livre que pode citar o contato. Vão para a cascata com marcador vazio:
+  // `next_action = null` e `qualification = '{}'`.
+  //
+  // SELECT antes do UPDATE: em regime o estado já está vazio, e escrever de
+  // novo seria gravar sobre dado certo em toda rodada — o mesmo padrão dos
+  // passos 3, 4 e 5.
+  let estadosRedigidos = 0;
+  const { data: estadoData, error: estadoSelErr } = await db
+    .from("lead_state")
+    .select("id, next_action, qualification")
+    .eq("organization_id", contato.organizationId)
+    .eq("contact_id", contato.id);
+  if (estadoSelErr) falhas.push(`lead_state select: ${estadoSelErr.message}`);
+
+  const estados = ((estadoData ?? []) as { id: string; next_action: string | null; qualification: unknown }[]).filter(
+    (e) => e.next_action !== null || JSON.stringify(e.qualification) !== "{}",
+  );
+  if (estados.length > 0) {
+    const { error } = await db
+      .from("lead_state")
+      .update({ next_action: null, qualification: {} })
+      .eq("organization_id", contato.organizationId)
+      .in("id", estados.map((e) => e.id));
+    if (error) falhas.push(`lead_state: ${error.message}`);
+    else {
+      estadosRedigidos = estados.length;
+      tabelas.push("lead_state");
+    }
+  }
+
+  // ── Passo 8 — IDENTIDADE SOCIAL (`contacts.social_identity`) — issue #1957 ──
+  //
+  // A RPC `fn_lgpd_cascade_redact_contact` zera o PII forte do contato (nome,
+  // e-mail, telefone, CPF) mas NÃO toca `social_identity` (jsonb com o perfil
+  // social). Quem pediu anonimização não quer a identidade social sobrando.
+  // Mora aqui, e não na RPC, pelo mesmo motivo da régua (passo 4): este arquivo
+  // é a unidade que as duas bocas (rota e cron) compartilham e a retomada não
+  // passa pela RPC de cascata.
+  let socialIdentidadeRedigida = false;
+  const { data: contatoRow, error: socialSelErr } = await db
+    .from("contacts")
+    .select("id, social_identity")
+    .eq("organization_id", contato.organizationId)
+    .eq("id", contato.id);
+  if (socialSelErr) falhas.push(`contacts social_identity select: ${socialSelErr.message}`);
+
+  const comSocial = ((contatoRow ?? []) as { id: string; social_identity: unknown }[]).find(
+    (c) => c.social_identity !== null && c.social_identity !== undefined,
+  );
+  if (comSocial) {
+    const { error } = await db
+      .from("contacts")
+      .update({ social_identity: null })
+      .eq("organization_id", contato.organizationId)
+      .eq("id", comSocial.id);
+    if (error) falhas.push(`contacts social_identity: ${error.message}`);
+    else {
+      socialIdentidadeRedigida = true;
+      tabelas.push("contacts:social_identity");
+    }
+  }
+
+  return {
+    leadsRedigidas,
+    atividadesRedigidas,
+    memoriasRedigidas,
+    runsRedigidas,
+    estadosRedigidos,
+    socialIdentidadeRedigida,
+    tabelas,
+    falhas,
+  };
 }
 
 /**
@@ -299,11 +495,16 @@ export interface ResultadoDaVarredura {
   falhas: string[];
 }
 
-/** Um contato tem resíduo se alguma lead ou atividade dele ainda não foi redigida. */
-function idsComResiduo(
-  leads: { contact_id: string | null; title: string | null }[],
-  atividades: { contact_id: string | null; payload: unknown }[],
-): Set<string> {
+/** Um contato tem resíduo se alguma lead, atividade, memória, run, estado ou identidade social dele ainda não foi redigida. */
+function idsComResiduo(argumentos: {
+  leads: { contact_id: string | null; title: string | null }[];
+  atividades: { contact_id: string | null; payload: unknown }[];
+  notas: { contact_id: string | null; headline: string; body: string }[];
+  runs: { contact_id: string | null; tool_calls: unknown }[];
+  estados: { contact_id: string | null; next_action: string | null; qualification: unknown }[];
+  sociais: { id: string; social_identity: unknown }[];
+}): Set<string> {
+  const { leads, atividades, notas, runs, estados, sociais } = argumentos;
   const comResiduo = new Set<string>();
   for (const l of leads) {
     if (l.contact_id && !jaRedigida(l.title)) comResiduo.add(l.contact_id);
@@ -312,6 +513,22 @@ function idsComResiduo(
     if (a.contact_id && (a.payload as { redacted?: unknown } | null)?.redacted !== true) {
       comResiduo.add(a.contact_id);
     }
+  }
+  for (const n of notas) {
+    if (n.contact_id && (n.headline !== NOTA_REDIGIDA || n.body !== NOTA_REDIGIDA)) {
+      comResiduo.add(n.contact_id);
+    }
+  }
+  for (const r of runs) {
+    if (r.contact_id && toolCallsPendentes(r.tool_calls)) comResiduo.add(r.contact_id);
+  }
+  for (const e of estados) {
+    if (e.contact_id && (e.next_action !== null || JSON.stringify(e.qualification) !== "{}")) {
+      comResiduo.add(e.contact_id);
+    }
+  }
+  for (const s of sociais) {
+    if (s.social_identity !== null && s.social_identity !== undefined) comResiduo.add(s.id);
   }
   return comResiduo;
 }
@@ -374,10 +591,46 @@ export async function varrerRedacoesIncompletas(
       .in("contact_id", bloco);
     if (atvErr) falhas.push(`crm_lead_activities varredura: ${atvErr.message}`);
 
-    const achados = idsComResiduo(
-      (leads ?? []) as { contact_id: string | null; title: string | null }[],
-      (atvs ?? []) as { contact_id: string | null; payload: unknown }[],
-    );
+    const { data: notas, error: notaErr } = await db
+      .from("lead_notes")
+      .select("contact_id, headline, body")
+      .in("contact_id", bloco);
+    if (notaErr) falhas.push(`lead_notes varredura: ${notaErr.message}`);
+
+    const { data: runs, error: runErr } = await db
+      .from("ai_agent_runs")
+      .select("contact_id, tool_calls")
+      .in("contact_id", bloco);
+    if (runErr) falhas.push(`ai_agent_runs varredura: ${runErr.message}`);
+
+    const { data: estados, error: estadoErr } = await db
+      .from("lead_state")
+      .select("contact_id, next_action, qualification")
+      .in("contact_id", bloco);
+    if (estadoErr) falhas.push(`lead_state varredura: ${estadoErr.message}`);
+
+    // A identidade social vive NO contato (não numa tabela vizinha), então entra
+    // no bloco como um IN sobre os ids já examinados. A detecção em bloco não
+    // filtra org de propósito (ver o cabeçalho de `varrerRedacoesIncompletas`);
+    // quem decide org é a escrita, filtrando pela linha de `contacts`.
+    const { data: sociais, error: socialErr } = await db
+      .from("contacts")
+      .select("id, social_identity")
+      .in("id", bloco);
+    if (socialErr) falhas.push(`contacts social_identity varredura: ${socialErr.message}`);
+
+    const achados = idsComResiduo({
+      leads: (leads ?? []) as { contact_id: string | null; title: string | null }[],
+      atividades: (atvs ?? []) as { contact_id: string | null; payload: unknown }[],
+      notas: (notas ?? []) as { contact_id: string | null; headline: string; body: string }[],
+      runs: (runs ?? []) as { contact_id: string | null; tool_calls: unknown }[],
+      estados: (estados ?? []) as {
+        contact_id: string | null;
+        next_action: string | null;
+        qualification: unknown;
+      }[],
+      sociais: (sociais ?? []) as { id: string; social_identity: unknown }[],
+    });
     // A detecção não filtra org (ver o cabeçalho): um `contact_id` que não
     // saiu da lista de contatos anonimizados não vira visita.
     for (const id of achados) if (orgDe.has(id)) pendentes.push(id);

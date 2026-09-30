@@ -8,6 +8,8 @@
  *   - a IA passou a conversa para uma pessoa (aviso `handoff`);
  *   - a IA ficou sem saldo no provedor e as respostas estão esperando a
  *     recarga (`lib/agent-engine/queue/espera-de-saldo.ts`);
+ *   - a IA rascunhou uma proposta que só uma pessoa pode revisar e enviar
+ *     (`lib/propostas/aviso-de-revisao.ts`);
  *   - um negócio entrou numa etapa que avisa (migration 0440).
  *
  * São os MESMOS que têm som próprio: a regra de quais avisos pedem gente é uma
@@ -15,9 +17,12 @@
  * (migration 0442); o resto da Central fica só na tela.
  *
  * O texto sai no idioma da ORGANIZAÇÃO — ninguém está logado quando o push sai
- * — e não carrega dado do cliente: o push aparece na tela bloqueada, e quem
- * precisa do nome toca e abre o contexto com a permissão que tem. O destino é o
- * mesmo que a Central daria ao aviso (`REFERENCIAS_DE_AVISO`).
+ * — e, com UMA exceção que é decisão do dono do produto, não carrega dado do
+ * cliente: o aviso de proposta rascunhada usa o `title` da Central, que nomeia a
+ * proposta e a contraparte (ver o ramo dele abaixo). Nos outros, o push aparece
+ * na tela bloqueada sem nome de ninguém, e quem precisa do dado toca e abre o
+ * contexto com a permissão que tem. O destino é o mesmo que a Central daria ao
+ * aviso (`REFERENCIAS_DE_AVISO`).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -49,6 +54,9 @@ function destinoDaPassagem(item: Aviso): string {
   if (!item.ref_id) return CENTRAL;
   if (item.ref_kind === "conversation") return REFERENCIAS_DE_AVISO.conversation.href(item.ref_id);
   if (item.ref_kind === "contact") return REFERENCIAS_DE_AVISO.contact.href(item.ref_id);
+  // A proposta rascunhada pela IA: o aviso pede uma pessoa, e o botão precisa
+  // cair na proposta — o mesmo destino que a Central daria (`proposal`).
+  if (item.ref_kind === "proposal") return REFERENCIAS_DE_AVISO.proposal.href(item.ref_id);
   return CENTRAL;
 }
 
@@ -84,6 +92,27 @@ export async function pushDoAvisoDaCentral(
       body: traduzir("Recarregue o saldo na conta do provedor: as respostas saem sozinhas quando ele voltar.", idioma),
       tag,
       href: REFERENCIAS_DE_AVISO.ai_provider_credential.href(),
+    };
+  }
+
+  // ⚠️ A proposta rascunhada pela IA é o ÚNICO aviso que carrega o nome de quem
+  // é a contraparte, e isso é decisão do dono do produto, não esquecimento: o
+  // título aqui é o `title` do aviso da Central — o mesmo que o cartão da tela
+  // mostra — e o corpo é a MESMA frase do cartão. Quem recebe o push precisa
+  // saber de quem é o orçamento antes de abrir, e o aviso é lido por quem já tem
+  // papel de gestor. Os outros ramos continuam sem nome de cliente (ver o
+  // cabeçalho).
+  //
+  // Antes disto não existia: o aviso caía no `pessoa` abaixo e saía ao celular
+  // como "A IA passou uma conversa para a equipe" / "Abra a conversa para
+  // responder o cliente" — falso, e mandava quem atendia procurar uma conversa
+  // que não existe.
+  if (item.kind === "proposta_pronta_para_revisao") {
+    return {
+      title: truncar(item.title),
+      body: traduzir("A IA preparou uma proposta. Confira antes de enviar.", idioma),
+      tag,
+      href: destinoDaPassagem(item),
     };
   }
 

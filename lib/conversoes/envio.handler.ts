@@ -40,12 +40,19 @@
  * é registrado: ele volta no `HandlerResult` e o drain o persiste no `event_log`
  * (invariante 4 — não-aplicação é auditável, não invisível).
  */
+import { canalQueReportaConversao } from "@/lib/channels/conversao-pelo-canal";
+import type { ChannelConversionResult } from "@/lib/channels/types";
 import type { EventHandler, EventRow, HandlerResult } from "@/lib/event-log/dispatcher";
 import { lerCredencial } from "@/lib/plataformas-de-anuncio/credenciais";
 import { transporteDe, ehPlataformaConhecida } from "@/lib/plataformas-de-anuncio/registry";
-import type { ConversaoOffline, NomeDoEvento } from "@/lib/plataformas-de-anuncio/types";
+import type {
+  ConversaoOffline,
+  NomeDoEvento,
+  ResultadoDeEnvio,
+} from "@/lib/plataformas-de-anuncio/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { lerAtribuicao } from "./leitura-da-atribuicao";
+import { lerVendaPeloCanal } from "./venda-pelo-canal";
 import { ehEventoDeEtapa } from "./regras-google";
 import { lerRegistro, registraEnvio } from "./registro-de-envio";
 
@@ -199,6 +206,61 @@ export async function processarConversao(
   if (!credencial.ok) {
     if (credencial.motivo === "leitura_indisponivel")
       throw new Error("Leitura da conexão indisponível.");
+
+    // ─── SEM CONEXÃO DIRETA: O CANAL DA CONVERSA ────────────────────────────
+    //
+    // Quando a conversa do cliente passa por um canal intermediado que já tem
+    // a ponte com o conjunto de dados da Meta (configurada na tela do
+    // provedor), é o canal quem guardou o vínculo com o clique — e a venda pode
+    // ir por ele, sem token nem dataset no CRM. Até aqui essa venda virava a
+    // pendência `sem_conexao`, que ninguém resolvia porque não havia o que
+    // preencher do lado do CRM.
+    //
+    // Só quando NÃO há conexão direta. Quem já configurou a Meta direta segue
+    // exatamente como antes — inclusive com ela desligada ou incompleta, que é
+    // decisão de quem opera e que o canal não atropela. Um caminho por venda:
+    // mandar pelos dois contaria a mesma compra duas vezes se os ids de
+    // deduplicação não casassem do outro lado.
+    //
+    // Protocolo pendente (`remote_request_id`) é do transporte direto, e só ele
+    // sabe consultá-lo: fica fora. O `value_cents` não nulo já está garantido
+    // pelo `sem_valor` acima; a checagem só estreita o tipo.
+    if (
+      credencial.motivo === "sem_conexao" &&
+      plataforma === "meta_ads" &&
+      EVENTO === "Purchase" &&
+      !registro?.remote_request_id &&
+      lead.value_cents !== null
+    ) {
+      // A chave vem ANTES de tudo (doc 76): desligada — o padrão —, nem as
+      // conversas são lidas, e nada sai para o provedor.
+      let canal = null;
+      try {
+        if (await lerVendaPeloCanal(admin, row.organization_id))
+          canal = await canalQueReportaConversao(admin, row.organization_id, lead.contact_id);
+      } catch (err) {
+        // Instabilidade na leitura não pode virar a pendência `sem_conexao`
+        // de uma venda que tem caminho: espera e tenta de novo.
+        return {
+          consumer_key: CONSUMER_KEY,
+          status: "retry",
+          retry_at: new Date(Date.now() + ESPERA_PADRAO_MS).toISOString(),
+          detail: `leitura do canal falhou: ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
+      if (canal) {
+        const pelo = await canal.reportar({
+          event: EVENTO,
+          eventId: `${lead.id}:${EVENTO}`,
+          occurredAt: new Date(lead.closed_at ?? row.created_at ?? Date.now()),
+          phone: telefone,
+          valueCents: lead.value_cents,
+          currency: lead.currency ?? "BRL",
+        });
+        return desfecho(doCanal(pelo), false);
+      }
+    }
+
     await registra("skipped", semValor ? "sem_valor" : credencial.motivo);
     return ok("skipped", semValor ? "sem_valor" : credencial.motivo);
   }
@@ -254,66 +316,85 @@ export async function processarConversao(
       ? await transporte.consultar(credencial.credencial, registro.remote_request_id)
       : await transporte.enviar(credencial.credencial, conversao);
 
-  if (resultado.tipo === "processando") {
-    const solicitadoEm =
-      registro?.remote_request_id === resultado.protocolo
-        ? (registro.remote_requested_at ?? new Date().toISOString())
-        : new Date().toISOString();
-    const vencido = Date.now() - new Date(solicitadoEm).getTime() > 24 * 60 * 60 * 1000;
-    await registra(
-      "skipped",
-      vencido ? "processamento_demorado" : "aguardando_processamento",
-      resultado.detalhe,
-      resultado.protocolo,
-      solicitadoEm,
-    );
-    if (vencido) return ok("skipped", "processamento_demorado");
-    return {
-      consumer_key: CONSUMER_KEY,
-      status: "retry",
-      retry_at: new Date(Date.now() + ESPERA_PADRAO_MS).toISOString(),
-      detail: resultado.detalhe,
-    };
-  }
+  return desfecho(resultado, Boolean(credencial.credencial.testEventCode));
 
-  if (resultado.tipo === "ok") {
-    if (credencial.credencial.testEventCode) {
+  /**
+   * O desfecho de UM envio, venha ele do transporte direto ou do canal — o
+   * mesmo livro-razão e a mesma espera, para as duas vias não divergirem.
+   */
+  async function desfecho(
+    resultado: ResultadoDeEnvio,
+    modoDeTeste: boolean,
+  ): Promise<HandlerResult> {
+    if (resultado.tipo === "processando") {
+      const solicitadoEm =
+        registro?.remote_request_id === resultado.protocolo
+          ? (registro.remote_requested_at ?? new Date().toISOString())
+          : new Date().toISOString();
+      const vencido = Date.now() - new Date(solicitadoEm).getTime() > 24 * 60 * 60 * 1000;
       await registra(
         "skipped",
-        "evento_de_teste",
-        "Evento recebido em modo de teste. Desative o teste antes de reportar a venda real.",
+        vencido ? "processamento_demorado" : "aguardando_processamento",
+        resultado.detalhe,
+        resultado.protocolo,
+        solicitadoEm,
       );
-      return ok("skipped", "evento_de_teste");
+      if (vencido) return ok("skipped", "processamento_demorado");
+      return {
+        consumer_key: CONSUMER_KEY,
+        status: "retry",
+        retry_at: new Date(Date.now() + ESPERA_PADRAO_MS).toISOString(),
+        detail: resultado.detalhe,
+      };
     }
-    await registra("sent", null, resultado.detalhe);
-    return ok("ok", `conversão reportada (${plataforma})`);
-  }
 
-  if (resultado.tipo === "transitorio") {
-    if (
-      registro?.remote_requested_at &&
-      Date.now() - new Date(registro.remote_requested_at).getTime() > 24 * 60 * 60 * 1000
-    ) {
-      await registra("skipped", "processamento_demorado", resultado.detalhe);
-      return ok("skipped", "processamento_demorado");
+    if (resultado.tipo === "ok") {
+      if (modoDeTeste) {
+        await registra(
+          "skipped",
+          "evento_de_teste",
+          "Evento recebido em modo de teste. Desative o teste antes de reportar a venda real.",
+        );
+        return ok("skipped", "evento_de_teste");
+      }
+      await registra("sent", null, resultado.detalhe);
+      return ok("ok", `conversão reportada (${plataforma})`);
     }
-    await registra("skipped", "nova_tentativa_agendada", resultado.detalhe);
-    // Transitório visível na mesma tela das pendências.
-    return {
-      consumer_key: CONSUMER_KEY,
-      status: "retry",
-      retry_at: new Date(Date.now() + (resultado.tentarEmMs ?? ESPERA_PADRAO_MS)).toISOString(),
-      detail: resultado.detalhe,
-    };
-  }
 
-  await registra(
-    "error",
-    "recusado_pela_plataforma",
-    resultado.detalhe,
-    resultado.rejeicaoConfirmada ? null : undefined,
-  );
-  return ok("skipped", "recusado_pela_plataforma");
+    if (resultado.tipo === "transitorio") {
+      if (
+        registro?.remote_requested_at &&
+        Date.now() - new Date(registro.remote_requested_at).getTime() > 24 * 60 * 60 * 1000
+      ) {
+        await registra("skipped", "processamento_demorado", resultado.detalhe);
+        return ok("skipped", "processamento_demorado");
+      }
+      await registra("skipped", "nova_tentativa_agendada", resultado.detalhe);
+      // Transitório visível na mesma tela das pendências.
+      return {
+        consumer_key: CONSUMER_KEY,
+        status: "retry",
+        retry_at: new Date(Date.now() + (resultado.tentarEmMs ?? ESPERA_PADRAO_MS)).toISOString(),
+        detail: resultado.detalhe,
+      };
+    }
+
+    await registra(
+      "error",
+      "recusado_pela_plataforma",
+      resultado.detalhe,
+      resultado.rejeicaoConfirmada ? null : undefined,
+    );
+    return ok("skipped", "recusado_pela_plataforma");
+  }
+}
+
+/** O desfecho do canal, no vocabulário do transporte — um só caminho de registro. */
+function doCanal(r: ChannelConversionResult): ResultadoDeEnvio {
+  if (r.outcome === "ok") return { tipo: "ok", detalhe: r.detail };
+  if (r.outcome === "retry")
+    return { tipo: "transitorio", detalhe: r.detail, tentarEmMs: r.retryInMs };
+  return { tipo: "permanente", detalhe: r.detail };
 }
 
 async function handle(row: EventRow): Promise<HandlerResult> {

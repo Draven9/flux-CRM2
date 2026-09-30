@@ -191,7 +191,21 @@ function montarBanco(c: Cenario): Banco {
       },
     ],
     conversations: [{ id: CONV, organization_id: ORG, channel_session_id: null, active_ai_agent_id: null }],
-    ai_agents: [],
+    // O worker só mede com um agente no ar (#1936): sem ele, sai com `nenhum_agente_no_ar`.
+    ai_agents: [
+      {
+        id: "66666666-6666-4666-8666-666666666666",
+        organization_id: ORG,
+        kind: "mcp_agent",
+        is_active: true,
+        paused_at: null,
+        published_version_id: "77777777-7777-4777-8777-777777777777",
+        archived_at: null,
+        config: {},
+        priority: 0,
+        created_at: "2026-01-01T00:00:00.000Z",
+      },
+    ],
     ai_agent_versions: [],
     llm_calls: [],
     agent_inbox_items: [],

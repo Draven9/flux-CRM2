@@ -4,6 +4,7 @@ import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { temPonteiroCanonico } from "@/lib/ai/skills/ponteiro-canonico";
+import { temVersaoNovaNoCatalogo } from "@/lib/ai/skills/versao-nova-catalogo";
 import type { SkillsState } from "@/hooks/ai/useSkills";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { SkillsClient } from "./_client";
@@ -36,13 +37,21 @@ export default async function SkillsPage() {
       : { data: [] };
   const versionById = new Map((versionsRaw ?? []).map((v) => [v.id, v]));
 
+  // Mesma régua do GET /api/v1/ai/skills (temVersaoNovaNoCatalogo), por name,
+  // para o aviso de versão nova vir pronto no primeiro paint (SSR) — não só
+  // depois do refetch da rota.
+  const platformVersionByName = new Map(platformRows.map((p) => [p.name, p.version_id]));
+
   const installed: SkillsState["installed"] = orgRows.map((p) => {
     const v = versionById.get(p.version_id);
+    const forked = v?.forked_from_version_id;
+    const plataforma = platformVersionByName.get(p.name);
     return {
       name: p.name,
       description: v?.description ?? "",
       version_id: p.version_id,
-      source: (v?.forked_from_version_id ? "catalog" : "manual") as "catalog" | "manual",
+      source: (forked ? "catalog" : "manual") as "catalog" | "manual",
+      versao_nova_catalogo: temVersaoNovaNoCatalogo(forked, plataforma),
       updated_at: p.updated_at,
     };
   });

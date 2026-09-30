@@ -27,6 +27,7 @@ import { conversaoDeQualificacaoHandler } from "@/lib/conversoes/qualificacao.ha
 import { conversaoDeVendaHandler } from "@/lib/conversoes/envio.handler";
 import { avisoDeEtapaHandler } from "@/lib/leads/aviso-de-etapa.handler";
 import { avisoDeCasoAoSuporteHandler } from "@/lib/escalacao/aviso-ao-suporte.handler";
+import { avisoDePropostaNoWhatsAppHandler } from "@/lib/propostas/aviso-no-whatsapp.handler";
 import { registerHandler } from "@/lib/event-log/dispatcher";
 
 let _registered = false;
@@ -71,6 +72,9 @@ export function ensureHandlersRegistered(): void {
   // e cuja falha custa um follow-up perdido. Ele também é o único handler que
   // adia a si mesmo quando o dreno está rodando dentro de uma requisição.
   registerHandler(avisoDeCasoAoSuporteHandler);
+  // Mesmo critério do de cima: sai por rede de terceiro, depois de quem só
+  // escreve no banco. Consome o MESMO evento que a notificação do navegador.
+  registerHandler(avisoDePropostaNoWhatsAppHandler);
   // Por último: reportar a venda ao anúncio é o consumidor mais externo do
   // fechamento — depende de rede de terceiro e não pode atrasar quem escreve
   // no banco. Falha dele nunca segura os handlers acima.

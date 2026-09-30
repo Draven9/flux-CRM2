@@ -148,6 +148,7 @@ describe("GET /api/v1/ai/skills", () => {
           description: string;
           version_id: string;
           source: string;
+          versao_nova_catalogo: boolean;
           updated_at: string;
         }>;
         catalog: Array<{ name: string; description: string }>;
@@ -159,12 +160,69 @@ describe("GET /api/v1/ai/skills", () => {
         description: "Explica frete (fork).",
         version_id: "ver-org-1",
         source: "catalog",
+        // fork da org vem de ver-plat-1, e o ponteiro de plataforma ainda aponta
+        // ver-plat-1 → catálogo NÃO publicou versão nova.
+        versao_nova_catalogo: false,
         updated_at: "2026-07-20T00:00:00Z",
       },
     ]);
     // frete-gratis já instalada pela org → sai do catálogo; só reativacao-d30 sobra.
     expect(body.data.catalog).toEqual([
       { name: "reativacao-d30", description: "Reativação D+30." },
+    ]);
+  });
+
+  it("catálogo publicou versão nova após a cópia → versao_nova_catalogo true", async () => {
+    mockAuthzOk();
+    vi.mocked(createAdminClient).mockReturnValue(
+      makeAdminStub({
+        orgPointers: [
+          { name: "agendamento", version_id: "ver-org-agen", updated_at: "2026-07-20T00:00:00Z" },
+        ],
+        platformPointers: [{ name: "agendamento", version_id: "ver-plat-agen2" }],
+        versions: [
+          {
+            id: "ver-org-agen",
+            description: "Cópia antiga do agendamento.",
+            forked_from_version_id: "ver-plat-agen1",
+          },
+          { id: "ver-plat-agen1", description: "Agendamento v2.", forked_from_version_id: null },
+          { id: "ver-plat-agen2", description: "Agendamento v3.", forked_from_version_id: null },
+        ],
+      }) as never,
+    );
+    const { GET } = await import("./route");
+    const res = await GET(getReq());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { installed: Array<{ versao_nova_catalogo: boolean }> } };
+    // a cópia forka de ver-plat-agen1; o ponteiro de plataforma já aponta
+    // ver-plat-agen2 → o catálogo publicou versão nova depois de instalada.
+    expect(body.data.installed).toEqual([
+      expect.objectContaining({ name: "agendamento", versao_nova_catalogo: true }),
+    ]);
+  });
+
+  it("skill manual → versao_nova_catalogo false mesmo sem ponteiro de plataforma", async () => {
+    mockAuthzOk();
+    vi.mocked(createAdminClient).mockReturnValue(
+      makeAdminStub({
+        orgPointers: [
+          { name: "meu-fluxo", version_id: "ver-manual-1", updated_at: "2026-07-20T00:00:00Z" },
+        ],
+        platformPointers: [],
+        versions: [
+          { id: "ver-manual-1", description: "Importada via .zip.", forked_from_version_id: null },
+        ],
+      }) as never,
+    );
+    const { GET } = await import("./route");
+    const res = await GET(getReq());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { installed: Array<{ name: string; source: string; versao_nova_catalogo: boolean }> };
+    };
+    expect(body.data.installed).toEqual([
+      expect.objectContaining({ name: "meu-fluxo", source: "manual", versao_nova_catalogo: false }),
     ]);
   });
 

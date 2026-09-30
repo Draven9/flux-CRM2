@@ -161,6 +161,11 @@ const DECISOES: Record<string, Decisao> = {
     caminho: "cascata",
     razao: "Venda redigida no mesmo molde do pedido: o que é da pessoa sai, o que é do negócio (valor, data) fica pela mesma obrigação fiscal.",
   },
+  crm_proposals: {
+    decidida: "redigir",
+    caminho: "cascata",
+    razao: "0477: destinatario_nome (nome impresso no PDF, D10/0466), briefing_json e resumo_comercial saem — número, valores, itens, datas e status ficam, mesmo molde de orders/crm_leads.",
+  },
   voice_calls: {
     decidida: "redigir",
     caminho: "cascata",
@@ -196,6 +201,11 @@ const DECISOES: Record<string, Decisao> = {
     caminho: "cascata",
     razao: "0379: a cauda do número sai, mas a linha é o 'não me mande mais' — apagá-la faria a pessoa voltar a receber campanha.",
   },
+  channel_session_groups: {
+    decidida: "redigir",
+    caminho: "cascata",
+    razao: "0482 (grupos na inbox, #1647): subject é o NOME do grupo e vira null; contact_id aponta para o placeholder do grupo (contacts.kind = 'whatsapp_group'), e número, conversa e liga/desliga ficam. O que o TITULAR escreveu em grupo é redigido pelo gatilho fn_redigir_conversas_ao_anonimizar, em messages.",
+  },
   // ── redigir pela virada de is_anonymized (gatilho) ────────────────────────
   ai_reply_drafts: {
     decidida: "redigir",
@@ -227,6 +237,11 @@ const DECISOES: Record<string, Decisao> = {
     caminho: "gatilho",
     razao: "0391: resumo corrido, compromissos, objeções, próxima ação e declaração do turno são texto de modelo sobre a pessoa — redigidos pela virada, que é o caminho que os DOIS compartilham.",
   },
+  import_rows: {
+    decidida: "redigir",
+    caminho: "gatilho",
+    razao: "0449 (metade B2B do #1621): raw_data/normalized_data são a linha da planilha como veio — nome, telefone, e-mail, cargo — e error citava o telefone; zerados na virada por fn_redigir_b2b_do_contato_anonimizado, que também redige a pessoa (people) e o vínculo (company_people). A linha fica: número, status e lote são a prova de que o lote rodou.",
+  },
   webhook_lead_captures: {
     decidida: "redigir",
     caminho: "gatilho",
@@ -235,7 +250,7 @@ const DECISOES: Record<string, Decisao> = {
   // ── manter: a linha e o conteúdo ficam, por decisão ───────────────────────
   ai_agent_runs: {
     decidida: "manter",
-    razao: "Resultado da execução do agente: status, código de erro e ids das mensagens trocadas. Nenhum campo guarda nome, telefone ou corpo de mensagem — o texto da pessoa mora em messages/conversations, que a cascata redige.",
+    razao: "A LINHA fica (status, erro, tokens, ids das mensagens: é a trilha do que o agente fez), mas tool_calls NÃO é livre de PII — guarda o texto do modelo e os argumentos/resultados das ferramentas, com nome e trechos do que a pessoa escreveu. É redigido pela camada de app, lib/lgpd/cascata.ts passo 6 (#1957/#1958), que preserva o nome das ferramentas e apaga o resto: a rota de anonimizar roda na hora; o pedido formal (lgpd-redact-worker) chama só esta função e é alcançado na varredura diária do cron data-retention. `manter` aqui descreve SÓ a função SQL, que não toca a tabela; o destino é o gatilho da virada, no desenho da 0391.",
   },
   before_send_traces: {
     decidida: "manter",
@@ -255,11 +270,11 @@ const DECISOES: Record<string, Decisao> = {
   },
   lead_notes: {
     decidida: "manter",
-    razao: "⚠️ DÍVIDA CONHECIDA, não conforto: headline/body são texto livre do agente SOBRE a pessoa e hoje NENHUM caminho os redige (mesma entrada em DIVIDA_LGPD_CONHECIDA do invariante irmão). Esta entrada vira `redigir`+`cascata` no MESMO commit que acrescentar o passo — e o irmão tira a dívida naquele commit.",
+    razao: "⚠️ DÍVIDA PARCIAL, não conforto: headline/body são texto livre do agente SOBRE a pessoa. Desde o #1958 são redigidos (e o embedding zerado) pela camada de app, lib/lgpd/cascata.ts passo 5: a rota de anonimizar roda na hora; o pedido formal (lgpd-redact-worker) chama só esta função e só é alcançado na varredura diária do cron data-retention. A função SQL continua sem tocá-los — `manter` descreve ELA. Vira `redigir`+`gatilho` (desenho da 0391) no MESMO commit que a virada de is_anonymized os alcançar, e o irmão tira a dívida naquele commit.",
   },
   lead_state: {
     decidida: "manter",
-    razao: "Estágio, qualificação e próxima ação do funil: vocabulário fechado do motor, sem texto escrito sobre a pessoa — redigir apagaria o estado do negócio sem proteger ninguém.",
+    razao: "A LINHA e o estágio ficam (é o estado do negócio), mas next_action (texto) e qualification (jsonb) NÃO são vocabulário fechado: o agente escreve ali texto livre que cita a pessoa. São zerados pela camada de app, lib/lgpd/cascata.ts passo 7 (#1957/#1958): a rota de anonimizar roda na hora; o pedido formal (lgpd-redact-worker) chama só esta função e é alcançado na varredura diária do cron data-retention. `manter` descreve SÓ a função SQL; o destino é o gatilho da virada, no desenho da 0391.",
   },
   lead_state_transitions: {
     decidida: "manter",

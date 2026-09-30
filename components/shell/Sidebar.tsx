@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 import { toggleSidebar } from "@/app/actions/shell/toggleSidebar";
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { ConnectionHealthDot } from "@/components/connections/ConnectionHealthDot";
+import { ContadorDeCasos } from "@/components/shell/ContadorDeCasos";
+import { ContadorDaFila } from "@/components/shell/ContadorDaFila";
 import { VersionFooter } from "@/components/shell/VersionFooter";
 import { LogotipoDoProduto, SimboloDoProduto } from "@/components/branding/MarcaDoProduto";
 import { marcaEhADoProduto } from "@/lib/branding";
@@ -46,6 +48,7 @@ export function SidebarContent({
     activeOrg?.role ?? null,
     activeOrg?.interface_settings,
     activeOrg?.modulos_ligados ?? [],
+    activeOrg?.capacidades_ligadas ?? [],
   );
   // Configurações sai da área que rola e vai para o rodapé fixo: medido em
   // 1280x768, ele caía fora da dobra mesmo em telas de 1080px.
@@ -295,6 +298,8 @@ export function SidebarContent({
                               className={cn(collapsed ? "absolute top-1.5 right-1.5" : "ml-auto")}
                             />
                           )}
+                          {item.contador === "casos" && <ContadorDeCasos compacto={collapsed} />}
+                          {item.contador === "fila" && <ContadorDaFila compacto={collapsed} />}
                         </Link>
                       </li>
                     );

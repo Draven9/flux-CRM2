@@ -18,6 +18,7 @@ import { type NextRequest } from "next/server";
 
 import { ok, fail } from "@/lib/api/wrappers";
 import { temPonteiroCanonico } from "@/lib/ai/skills/ponteiro-canonico";
+import { temVersaoNovaNoCatalogo } from "@/lib/ai/skills/versao-nova-catalogo";
 import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { traduzir } from "@/lib/i18n/dicionario";
@@ -90,13 +91,25 @@ export async function GET(_req: NextRequest): Promise<Response> {
   }
   const versionById = new Map(versions.map((v) => [v.id, v]));
 
+  // Versão ATUAL de cada skill no catálogo de plataforma, por name. É o alvo do
+  // aviso de versão nova: uma cópia da org estará desatualizada quando o
+  // `forked_from_version_id` (a versão de plataforma de onde ela foi forked)
+  // diferir da `version_id` que o ponteiro de plataforma aponta HOJE.
+  const platformVersionByName = new Map(platformRows.map((p) => [p.name, p.version_id]));
+
   const installed = orgRows.map((p) => {
     const v = versionById.get(p.version_id);
+    const forked = v?.forked_from_version_id;
+    const plataforma = platformVersionByName.get(p.name);
     return {
       name: p.name,
       description: v?.description ?? "",
       version_id: p.version_id,
-      source: (v?.forked_from_version_id ? "catalog" : "manual") as "catalog" | "manual",
+      source: (forked ? "catalog" : "manual") as "catalog" | "manual",
+      // Só faz sentido pra skill de catálogo: a cópia da org veio de um fork de uma
+      // versão de plataforma; se o ponteiro de plataforma hoje aponta outra versão,
+      // o catálogo publicou versão nova depois de instalada aqui. Manual nunca → false.
+      versao_nova_catalogo: temVersaoNovaNoCatalogo(forked, plataforma),
       updated_at: p.updated_at,
     };
   });
