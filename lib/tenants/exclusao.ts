@@ -32,6 +32,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { audit } from "@/lib/audit";
 import { desligarCanaisDaOrganizacao } from "@/lib/channels/desligar-da-organizacao";
 import { logger } from "@/lib/logger";
+import { ehOperante } from "@/lib/organizacao/operante";
 import { NuvemshopApiClient } from "@/lib/nuvemshop/api-client";
 import { despareaVoz } from "@/lib/voice/desparear";
 import { getWacallsClient } from "@/lib/wacalls/client";
@@ -199,7 +200,11 @@ export async function excluirOrganizacao(
     .maybeSingle();
   if (orgErr) throw new Error(`exclusao_leitura: ${orgErr.message}`);
   if (!org) throw new ExclusaoRecusada("not_found", "Organização não encontrada.");
-  if (org.status !== "suspended") {
+  // A régua é a do produto (`lib/organizacao/operante.ts`): organização que
+  // OPERA não se exclui. Quem decide "está suspensa" de verdade é a própria
+  // `fn_excluir_organizacao`, que recusa qualquer status que não seja
+  // `suspended` — inclusive `redacted`/`archived`, que também não operam.
+  if (ehOperante(org.status)) {
     throw new ExclusaoRecusada(
       "state_conflict",
       "Só uma organização suspensa pode ser excluída. Suspenda-a antes.",

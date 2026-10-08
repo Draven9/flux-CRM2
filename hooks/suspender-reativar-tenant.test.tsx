@@ -17,6 +17,9 @@ const { post, toast } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/api/client", () => ({ apiClient: { post: (...a: unknown[]) => post(...a) } }));
 vi.mock("sonner", () => ({ toast }));
+// Distribuição Flux: os dois hooks dão `router.refresh()` porque o cabeçalho
+// do tenant é Server Component.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 import { useReactivateTenant } from "./useReactivateTenant";
 import { useSuspendTenant } from "./useSuspendTenant";
