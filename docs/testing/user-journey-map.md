@@ -1345,6 +1345,30 @@ APROVAR um pedido de LGPD pelo hub (a spec abre o pedido, não aprova).
 `evidence/suspensao-administrativa/hub-atendente.png`,
 `evidence/suspensao-administrativa/central-apos-reativar.png`.
 
+## J41 — Gestão de tenants pelo admin da plataforma `[P1]` (2026-09-29)
+
+Suspender, corrigir o e-mail de acesso, reativar, editar e excluir um tenant pela
+tela de `/admin/tenants/<id>`, com um membro do tenant logado ao mesmo tempo.
+Spec: `tests/e2e/admin-gestao-de-tenants.spec.ts` (job e2e, parte 5; cria o próprio
+tenant e o próprio login e se desfaz deles). Evidência: `evidence/admin-gestao-de-tenants/01-tenant-ativo.png`, `evidence/admin-gestao-de-tenants/02-tenant-suspenso.png`, `evidence/admin-gestao-de-tenants/03-membro-ve-conta-suspensa.png`, `evidence/admin-gestao-de-tenants/04-email-corrigido.png`, `evidence/admin-gestao-de-tenants/05-membro-de-volta.png`, `evidence/admin-gestao-de-tenants/06-dados-editados.png`, `evidence/admin-gestao-de-tenants/07-confirmacao-da-exclusao.png`, `evidence/admin-gestao-de-tenants/08-lista-depois-da-exclusao.png`. Medido localmente em 29/09/2026, Supabase
+local do `baseline.sql` (pg15), `next build` + `next start`, sem chave de IA e sem
+Redis: `1 passed (42.9s)`. A transação da exclusão tem prova
+própria em `tests/invariants/gestao-de-tenants.test.ts`.
+
+| # | Caso | Expectativa | Resultado |
+|---|------|-------------|-----------|
+| J41.1 | Tenant ativo | cabeçalho com o nome; o e-mail de login do membro na lista; sem "Excluir tenant", com a instrução "suspenda-o primeiro" | PASS |
+| J41.2 | Suspender com motivo | faixa com o motivo; "Excluir tenant" aparece | PASS |
+| J41.3 | O membro logado depois da suspensão | a próxima navegação cai em `/account-suspended`; `GET /api/v1/contacts` → `403 tenant_suspended` | PASS |
+| J41.4 | Corrigir o e-mail de acesso | a lista mostra o novo; o login com o NOVO entra (e cai na tela de suspensão); o login com o ANTIGO é recusado | PASS |
+| J41.5 | Reativar com motivo | banco volta a `active`; o membro entra em `/app` | PASS |
+| J41.6 | Editar dados | o nome novo aparece no cabeçalho e está gravado no banco | PASS |
+| J41.7 | Excluir | aviso de irreversível; botão travado com identificador errado; com o certo, a organização some do banco, a lápide `organization.deleted` fica na auditoria e o login que só pertencia a ela é removido | PASS |
+
+Não provado pela tela: o desligamento externo da exclusão (WAHA, Meta, Nuvemshop),
+porque o tenant de teste não tem canal conectado — medido por unidade em
+`lib/tenants/exclusao.test.ts`.
+
 ## Jornadas exercitadas (instalação final, virgem)
 
 | Jornada | Resultado |
@@ -3290,27 +3314,3 @@ Spec: `tests/e2e/mapas-em-provedores.spec.ts`.
 | J40.6 | O que o Google diz × o endereço anotado em 8 pedidos confirmados (28/09/2026, numa instalação real) | município 8/8, região 8/8, localidade 7/8 (na zona rural virou o povoado), rua 3/5, bairro 1/8, número interpolado → a cidade é o MUNICÍPIO; bairro e número não saem | **MEDIDO em produção** (fora deste repositório); regra em `tests/unit/mapas-pino-com-endereco.test.ts` |
 | J40.7 | O pino com endereço aproximado, aberto na conversa pela equipe | o cartão do pino mostra «Rua, Cidade, Estado (aprox.)», com o texto inteiro no `title` (o cartão corta com …) e o toque abre as COORDENADAS no mapa | **PASS pela tela** — Evidência: `evidence/triagem-16set-l12/mapas-03-pino-na-conversa.png` |
 | J40.8 | A API do canal intermediado não responde a tempo na ingestão do pino (medido 29/09/2026: timeout duas vezes seguidas) | a mensagem entra com o marcador e pede nova busca (`message.location_retry_requested`); 1 min depois, e a cada 2 min até 15, busca de novo e grava tipo `location` + link (+ endereço aproximado com chave); nunca rebaixa um pino que já tem coordenadas; desiste sem virar incidente | **PASS (unit)** — `tests/unit/pino-reintento.test.ts`, `tests/unit/channel-ingest-zernio.test.ts` |
-
-## J41 — Gestão de tenants pelo admin da plataforma `[P1]` (2026-09-29)
-
-Suspender, corrigir o e-mail de acesso, reativar, editar e excluir um tenant pela
-tela de `/admin/tenants/<id>`, com um membro do tenant logado ao mesmo tempo.
-Spec: `tests/e2e/admin-gestao-de-tenants.spec.ts` (job e2e, parte 5; cria o próprio
-tenant e o próprio login e se desfaz deles). Evidência: `evidence/admin-gestao-de-tenants/01-tenant-ativo.png`, `evidence/admin-gestao-de-tenants/02-tenant-suspenso.png`, `evidence/admin-gestao-de-tenants/03-membro-ve-conta-suspensa.png`, `evidence/admin-gestao-de-tenants/04-email-corrigido.png`, `evidence/admin-gestao-de-tenants/05-membro-de-volta.png`, `evidence/admin-gestao-de-tenants/06-dados-editados.png`, `evidence/admin-gestao-de-tenants/07-confirmacao-da-exclusao.png`, `evidence/admin-gestao-de-tenants/08-lista-depois-da-exclusao.png`. Medido localmente em 29/09/2026, Supabase
-local do `baseline.sql` (pg15), `next build` + `next start`, sem chave de IA e sem
-Redis: `1 passed (42.9s)`. A transação da exclusão tem prova
-própria em `tests/invariants/gestao-de-tenants.test.ts`.
-
-| # | Caso | Expectativa | Resultado |
-|---|------|-------------|-----------|
-| J41.1 | Tenant ativo | cabeçalho com o nome; o e-mail de login do membro na lista; sem "Excluir tenant", com a instrução "suspenda-o primeiro" | PASS |
-| J41.2 | Suspender com motivo | faixa com o motivo; "Excluir tenant" aparece | PASS |
-| J41.3 | O membro logado depois da suspensão | a próxima navegação cai em `/account-suspended`; `GET /api/v1/contacts` → `403 tenant_suspended` | PASS |
-| J41.4 | Corrigir o e-mail de acesso | a lista mostra o novo; o login com o NOVO entra (e cai na tela de suspensão); o login com o ANTIGO é recusado | PASS |
-| J41.5 | Reativar com motivo | banco volta a `active`; o membro entra em `/app` | PASS |
-| J41.6 | Editar dados | o nome novo aparece no cabeçalho e está gravado no banco | PASS |
-| J41.7 | Excluir | aviso de irreversível; botão travado com identificador errado; com o certo, a organização some do banco, a lápide `organization.deleted` fica na auditoria e o login que só pertencia a ela é removido | PASS |
-
-Não provado pela tela: o desligamento externo da exclusão (WAHA, Meta, Nuvemshop),
-porque o tenant de teste não tem canal conectado — medido por unidade em
-`lib/tenants/exclusao.test.ts`.

@@ -247,6 +247,14 @@ const GATILHO_ESPERADO: Record<string, { condicao: string | null; efeito: string
       "boas-vindas de robô; sem a de dono, o fork de cada self-hoster herda um bot que fala pela " +
       "gente no repositório dele, prometendo um prazo que ninguém lá concordou em cumprir.",
   },
+  "sincronizar-com-produto.yml::sincronizar": {
+    condicao: "github.repository == 'FlaviaFlux/flux-CRM2'",
+    efeito:
+      "Distribuição Flux: este job traz as releases do produto para o fork e cria a release " +
+      "`-flux.1`. A condição é DELIBERADA — fora do fork da distribuição (inclusive no próprio " +
+      "produto) ele não tem o que sincronizar nem o token para isso. Desligá-lo no fork faz a VPS " +
+      "parar de receber versões novas sem erro visível em lugar nenhum.",
+  },
   "relogio.yml::tick": {
     condicao: "vars.RELOGIO_LIGADO == '1' || github.event_name == 'workflow_dispatch'",
     efeito:

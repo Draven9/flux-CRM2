@@ -1,0 +1,54 @@
+# Distribuição Flux — acompanha as releases do produto sozinha.
+#
+# A cada 3 horas dá UM passo (mesclar a release nova numa branch e abrir PR,
+# esperar o CI, mesclar quando verde, criar a release `-flux.1`) e sai. Conflito
+# ou CI vermelho viram issue, nunca merge. A lógica e o porquê de cada passo:
+# `scripts/flux/sincronizar-com-produto.sh`.
+#
+# Usa o secret SYNC_TOKEN (token fino da conta dona do fork, só este
+# repositório: Contents, Pull requests, Issues e Workflows em leitura e escrita).
+# O GITHUB_TOKEN não serve por dois motivos: PR e tag criados por ele NÃO
+# disparam outros workflows (o CI do PR e a publicação de imagens nunca
+# rodariam), e ele não pode empurrar mudança em `.github/workflows/`, que quase
+# toda release do produto traz.
+name: sincronizar-com-produto
+
+on:
+  schedule:
+    - cron: "17 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sincronizar-com-produto
+  cancel-in-progress: false
+
+jobs:
+  sincronizar:
+    # Só no fork da distribuição: em qualquer outro clone (inclusive o produto)
+    # o job é pulado.
+    if: github.repository == 'FlaviaFlux/flux-CRM2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+      FORK: ${{ github.repository }}
+      PRODUTO: melgarafael/DeskcommCRM
+    steps:
+      - name: O token está configurado?
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::error::Falta o secret SYNC_TOKEN (Settings › Secrets and variables › Actions). Sem ele a sincronização não roda."
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN }}
+      - name: Sincronizar com o produto
+        run: |
+          git config user.name "Sincronização Flux"
+          git config user.email "flaviaflux@users.noreply.github.com"
+          bash scripts/flux/sincronizar-com-produto.sh
