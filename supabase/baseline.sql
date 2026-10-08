@@ -10176,6 +10176,8 @@ alter table public.agent_inbox_items
     -- (migration 0556) o admin da plataforma trocou o e-mail de login de uma
     -- pessoa da equipe (PATCH .../members/[userId]/email): a empresa fica
     -- sabendo pela Central — com o nome e a data, nunca o endereço.
+    -- Na cadeia de migrations quem o reafirma é a 0651 da distribuição Flux:
+    -- a 0589 do produto reconstruiu esta lista sem enxergar a 0556.
     'email_de_login_trocado',
     'other'
   ));
