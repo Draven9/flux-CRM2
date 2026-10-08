@@ -112,6 +112,10 @@ export type InboxKind =
   // receberam mensagem enquanto ela estava parada. A IA não respondeu e não vai
   // responder sozinha, então quem abre o Inbox é uma pessoa. Nasce sem referência.
   | 'org_reativada'
+  // (migration 0556) O admin da plataforma trocou o e-mail de login de uma
+  // pessoa da equipe. O aviso leva o nome e a data, nunca o endereço — é
+  // gravado pela rota `PATCH /api/v1/admin/tenants/[id]/members/[userId]/email`.
+  | 'email_de_login_trocado'
   | 'other';
 
 export interface InboxItemRow {

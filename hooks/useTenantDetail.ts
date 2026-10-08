@@ -1,6 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
+import type { TipoDeSuspensao } from "@/lib/organizacao/operante";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,7 +18,9 @@ export interface TenantOrganization {
   status: "active" | "suspended" | "redacted";
   onboarded_at: string | null;
   suspended_at: string | null;
-  suspended_reason: string | null;
+  // Só significa algo com status='suspended'; nulo vale como administrativa.
+  // A exclusão recusa a suspensão por cobrança (`lib/tenants/exclusao.ts`).
+  suspended_kind: TipoDeSuspensao | null;
   created_at: string;
   settings: Record<string, unknown> | null;
   // Dados cadastrais editáveis (os mesmos de Configurações › Empresa).

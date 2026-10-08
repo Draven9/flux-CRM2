@@ -1,7 +1,11 @@
 import { type NextRequest } from "next/server";
 import { z } from "zod";
-import { requirePlatformAdmin } from "@/lib/auth/requirePlatformAdmin";
-import { requirePlatformAdminWrite } from "@/lib/auth/requirePlatformAdminWrite";
+import {
+  falhaDaEscritaDePlatformAdmin,
+  requirePlatformAdmin,
+  requirePlatformAdminEscrita,
+  type PlatformAdminContext,
+} from "@/lib/auth/requirePlatformAdmin";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { logger } from "@/lib/logger";
 import { tenantSchema } from "@/lib/schemas/settings";
@@ -44,7 +48,7 @@ export async function GET(
       status,
       onboarded_at,
       suspended_at,
-      suspended_reason,
+      suspended_kind,
       created_at,
       settings,
       country,
@@ -197,9 +201,12 @@ export async function PATCH(
   const supportDenied = await requireSupportWrite(id);
   if (supportDenied) return supportDenied;
 
-  const guarda = await requirePlatformAdminWrite(requestId);
-  if (!guarda.ok) return guarda.response;
-  const adminCtx = guarda.ctx;
+  let adminCtx: PlatformAdminContext;
+  try {
+    adminCtx = await requirePlatformAdminEscrita();
+  } catch (err) {
+    return falhaDaEscritaDePlatformAdmin(err, requestId);
+  }
 
   let raw: unknown;
   try {

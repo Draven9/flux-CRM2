@@ -82,6 +82,9 @@ export const ApiErrorCodes = {
   // POST /admin/tenants/[id]/reactivate sobre suspensão por falta de pagamento:
   // a saída é "Dar prazo" ou "Tornar isenta", nunca o "Reativar" genérico.
   suspensao_de_cobranca: "suspensao_de_cobranca",
+  // POST /admin/tenants/[id]/delete sobre suspensão por falta de pagamento:
+  // excluir deixaria a assinatura cobrando no provedor. Irmão do de cima.
+  exclusao_com_cobranca_pendente: "exclusao_com_cobranca_pendente",
   // POST /admin/tenants/[id]/suspend|reactivate quando o descarte da fila bate
   // na trava do aviso do Meet (`appointment_notice_busy`, 40001): outra escrita
   // do mesmo contato está em curso. Nada foi gravado; tentar de novo resolve.

@@ -4951,7 +4951,6 @@ export const DICIONARIO: Traducoes = {
   "Suspender tenant": { es: "Suspender tenant" },
   "Reativar tenant": { es: "Reactivar tenant" },
   // ─── Admin de plataforma: gestão de tenants (editar, excluir, e-mail de acesso) ───
-  "Você também participa de outras empresas que seguem ativas.": { es: "También participas en otras empresas que siguen activas." },
   "Tenant excluído.": { es: "Tenant eliminado." },
   "Logins removidos": { es: "Accesos eliminados" },
   "Logins mantidos (pertencem a outra empresa ou são referenciados)": { es: "Accesos conservados (pertenecen a otra empresa o están referenciados)" },
@@ -4972,7 +4971,6 @@ export const DICIONARIO: Traducoes = {
   "Excluir definitivamente": { es: "Eliminar definitivamente" },
   "Editar dados do tenant": { es: "Editar datos del tenant" },
   "Os mesmos dados que o administrador da empresa vê em Configurações › Empresa.": { es: "Los mismos datos que el administrador de la empresa ve en Configuración › Empresa." },
-  "Tenant suspenso — reative para acompanhar": { es: "Tenant suspendido — reactívalo para acompañar" },
   "Editar dados": { es: "Editar datos" },
   "Excluir tenant": { es: "Eliminar tenant" },
   "Para excluir um tenant, suspenda-o primeiro.": { es: "Para eliminar un tenant, suspéndelo primero." },
@@ -4983,9 +4981,10 @@ export const DICIONARIO: Traducoes = {
   "Dono": { es: "Dueño" },
   "Admin da plataforma": { es: "Admin de la plataforma" },
   "O e-mail de um administrador da plataforma só é trocado pelo próprio dono da conta.": { es: "El correo de un administrador de la plataforma solo lo cambia el propio dueño de la cuenta." },
+  "Quem perdeu o acesso a este tenant não tem o e-mail trocado por aqui: a empresa avisada seria uma em que a pessoa já não está.": { es: "A quien perdió el acceso a este tenant no se le cambia el correo por aquí: la empresa avisada sería una en la que la persona ya no está." },
   "Alterar e-mail": { es: "Cambiar correo" },
   "E-mail alterado.": { es: "Correo cambiado." },
-  "A pessoa já entra com o novo endereço, e a recuperação de senha vai para ele.": { es: "La persona ya entra con la nueva dirección, y la recuperación de contraseña va a ella." },
+  "A pessoa já entra com o novo endereço, e a recuperação de senha vai para ele. A empresa foi avisada na Central.": { es: "La persona ya entra con la nueva dirección, y la recuperación de contraseña va a ella. La empresa fue avisada en la Central." },
   "Não foi possível alterar o e-mail": { es: "No fue posible cambiar el correo" },
   "Alterar e-mail de acesso": { es: "Cambiar correo de acceso" },
   "O novo endereço passa a ser o login e o destino da recuperação de senha. Confirme que ele pertence mesmo a esta pessoa.": { es: "La nueva dirección pasa a ser el acceso y el destino de la recuperación de contraseña. Confirma que realmente pertenece a esta persona." },
@@ -4993,8 +4992,6 @@ export const DICIONARIO: Traducoes = {
   "Novo e-mail": { es: "Nuevo correo" },
   "Este já é o e-mail desta pessoa.": { es: "Este ya es el correo de esta persona." },
   "Salvar e-mail": { es: "Guardar correo" },
-  "Esta organização está suspensa. Fale com quem administra o sistema.": { es: "Esta organización está suspendida. Habla con quien administra el sistema." },
-  "Esta organização está suspensa: nenhuma mensagem sai.": { es: "Esta organización está suspendida: no sale ningún mensaje." },
   "Tenant redigido — ações de gestão não disponíveis.": {
     es: "Tenant anonimizado — acciones de gestión no disponibles.",
   },
@@ -10950,6 +10947,29 @@ export const DICIONARIO: Traducoes = {
       es: "La IA no respondió ni responderá sola a las conversaciones que llegaron durante la suspensión. Abre el Inbox y búscalas en las pestañas Cola y Automático.",
     },
   "Abrir o Inbox": { es: "Abrir el Inbox" },
+  "O e-mail de login de uma pessoa da equipe foi trocado": {
+    es: "Se cambió el correo de inicio de sesión de una persona del equipo",
+  },
+  "Confirme com a pessoa que ela reconhece a troca. Se não reconhece, fale com quem administra o servidor.":
+    {
+      es: "Confirma con la persona que reconoce el cambio. Si no lo reconoce, habla con quien administra el servidor.",
+    },
+  "Abrir a equipe": { es: "Abrir el equipo" },
+  "O e-mail de login da sua conta foi trocado": {
+    es: "Se cambió el correo de inicio de sesión de tu cuenta",
+  },
+  "O e-mail de login da sua conta foi trocado pelo administrador da plataforma em {data}.": {
+    es: "El administrador de la plataforma cambió el correo de inicio de sesión de tu cuenta el {data}.",
+  },
+  "Se você não reconhece a mudança, fale com o administrador da sua empresa.": {
+    es: "Si no reconoces el cambio, habla con el administrador de tu empresa.",
+  },
+  "Este endereço deixa de receber os e-mails de acesso desta conta.": {
+    es: "Esta dirección deja de recibir los correos de acceso de esta cuenta.",
+  },
+  "Suspensa por falta de pagamento: não pode ser excluída enquanto houver cobrança pendente.": {
+    es: "Suspendida por falta de pago: no se puede eliminar mientras haya un cobro pendiente.",
+  },
   // Diálogo de exclusão de canal (`frasesDoImpacto`): singular e plural.
   "chamada de voz": { es: "llamada de voz" },
   "chamadas de voz": { es: "llamadas de voz" },

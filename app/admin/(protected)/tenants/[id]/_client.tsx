@@ -42,10 +42,7 @@ export function TenantOverviewClient({ id }: TenantOverviewClientProps) {
   return (
     <div className="space-y-6">
       {organization.status === "suspended" && organization.suspended_at && (
-        <SuspendedBanner
-          suspendedAt={organization.suspended_at}
-          reason={organization.suspended_reason ?? undefined}
-        />
+        <SuspendedBanner suspendedAt={organization.suspended_at} />
       )}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_280px]">

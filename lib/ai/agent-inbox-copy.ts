@@ -109,6 +109,7 @@ export const KIND_LABEL = {
   // Igual ao `title` que fn_reativar_organizacao grava: diz o que a pessoa tem
   // de FAZER agora — as conversas que chegaram durante a suspensão ficaram sem resposta.
   org_reativada: "A conta foi reativada — há conversas para revisar",
+  email_de_login_trocado: "O e-mail de login de uma pessoa da equipe foi trocado",
   other: "Aviso do assistente",
 } as const satisfies Record<InboxKind, string>;
 

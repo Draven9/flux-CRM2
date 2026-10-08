@@ -59,7 +59,12 @@ export async function updateTenant(input: TenantInput): Promise<UpdateTenantResu
   // `lib/tenants/dados-cadastrais.ts`, compartilhada com a gestão de tenants do
   // admin da plataforma.
   const gravado = await gravarDadosCadastrais(supabase, activeOrg.orgId, parsed.data);
-  if (!gravado.ok) return { ok: false, error: gravado.erro };
+  if (!gravado.ok) {
+    if (gravado.erro === "cnpj_em_uso") {
+      return { ok: false, error: "Este CNPJ já pertence a outra organização." };
+    }
+    return { ok: false, error: gravado.erro };
+  }
 
   await audit({
     action: "org.updated",
