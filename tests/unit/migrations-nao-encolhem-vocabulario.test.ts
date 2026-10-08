@@ -65,6 +65,16 @@ const DIR_MIGRATIONS = path.join(process.cwd(), "supabase", "migrations");
  * dado existente faz o `update.sh` de um clone quebrar no meio.
  */
 const REMOCOES_DELIBERADAS: Record<string, { valores: string[]; porque: string }> = {
+  "20261007180001_0589_canal_pausado_na_central.sql::agent_inbox_items_kind_check": {
+    valores: ["email_de_login_trocado"],
+    porque:
+      "Distribuição Flux: o mesmo ENCONTRO de branches represadas da 0292×0312. A 0556 " +
+      "(gestão de tenants, PR #1967 do produto, carimbo 05/10) acrescentou " +
+      "`email_de_login_trocado`; a 0589 do produto (carimbo 07/10) reconstruiu a constraint " +
+      "sem enxergá-la. Na `main` do produto sozinha a 0589 não remove nada. A forward-fix é a " +
+      "0651 do fork (`inbox_kind_email_de_login_trocado`), que reafirma a lista da 0589 mais " +
+      "o valor da 0556 — o estado FINAL da cadeia tem o valor, e o baseline sempre o teve.",
+  },
   "20260918231000_0312_aviso_de_followup_sem_agente.sql::agent_inbox_items_kind_check": {
     valores: ["aviso_de_caso_nao_entregue"],
     porque:

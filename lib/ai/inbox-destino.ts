@@ -143,6 +143,14 @@ export const POLITICAS_DE_AVISO = {
     orientacao: "A IA não respondeu nem vai responder sozinha às conversas que chegaram durante a suspensão. Abra o Inbox e procure-as nas abas Fila e Automático.",
     geral: { papel: "agent", href: "/app/inbox", rotulo: "Abrir o Inbox" },
   },
+  // A troca do e-mail de login pelo admin da plataforma. Sem referência: o
+  // aviso não leva o id da pessoa (a Central é lida por toda a empresa), e
+  // quem precisa conferir é quem administra a equipe.
+  email_de_login_trocado: {
+    refs: [],
+    orientacao: "Confirme com a pessoa que ela reconhece a troca. Se não reconhece, fale com quem administra o servidor.",
+    geral: { papel: "admin", href: "/app/team", rotulo: "Abrir a equipe" },
+  },
   other: { refs: ["lead", "channel_session", "appointment", "ai_agent", "ai_provider_credential", "agent_case"], orientacao: "Confira a situação descrita neste aviso com a pessoa responsável." },
 } satisfies Record<InboxKind, Politica>;
 

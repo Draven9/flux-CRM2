@@ -46,6 +46,15 @@ export function ehOperante(status: string | null | undefined): boolean {
 }
 
 /**
+ * A organização está SUSPENSA (e não só "parada"): `redacted`/`archived` também não
+ * operam, mas não são suspensões. Quem decide "só a suspensa pode X" (excluir pelo
+ * painel, reativar) pergunta aqui, para a comparação com o texto morar num lugar só.
+ */
+export function estaSuspensa(status: string | null | undefined): boolean {
+  return status === "suspended";
+}
+
+/**
  * A organização não opera. `ApiError` 403 `org_suspended`: a rota /messages o
  * traduz em resposta (app/api/v1/messages/route.ts) e o agent-worker cancela sem
  * retry quem tem `terminal === true` (workers/agent-worker/main.ts,

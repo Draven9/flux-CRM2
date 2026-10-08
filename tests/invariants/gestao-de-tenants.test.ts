@@ -2,19 +2,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
 
 /**
- * Gestão de tenants pelo admin da plataforma (migration 0650, distribuição Flux).
+ * Gestão de tenants pelo admin da plataforma (migration 0556).
  *
- * A promessa que só o Postgres consegue provar, porque mora em função
- * SECURITY DEFINER e cascata de FK:
+ * O que só o Postgres consegue provar, porque mora em função SECURITY DEFINER
+ * e cascata de FK:
  *
  * EXCLUIR É COMPLETO. `fn_excluir_organizacao` apaga a organização inteira
- * numa transação, inclusive o caso que derrubava um `delete` avulso (lead com
- * dono IA → `event_log` apontando para a org já apagada), guarda a lápide na
- * auditoria e diz quais logins ficaram sem organização.
- *
- * A suspensão não é medida aqui: ela é a da 0501 do produto, com gate próprio
- * em `tests/invariants/org-suspensa.test.ts`. O corte da RLS que esta suíte
- * cobrava saiu na sincronização com o produto v1.77.0.
+ *    numa transação, inclusive o caso que derrubava um `delete` avulso (lead com
+ *    dono IA → `event_log` apontando para a org já apagada), guarda a lápide na
+ *    auditoria e diz quais logins ficaram sem organização.
  */
 const container = process.env.TEST_DB_CONTAINER;
 if (!container) {
@@ -105,6 +101,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await pool.query("delete from organizations where id = any($1)", [[ORG_A, ORG_B, ORG_X]]);
   await pool.query("delete from api_audit_log where resource_id = $1", [ORG_X]);
+  await pool.query("delete from api_audit_log where action like 'lgpd.%' and actor_user_id = $1", [USER_SO_X]);
   // `platform_admins.granted_by` é RESTRICT, e o fixture concede a si mesmo.
   await pool.query("delete from platform_admins where user_id = $1", [ADMIN_PLAT]);
   await pool.query("delete from auth.users where id = any($1)", [
@@ -159,6 +156,18 @@ describe("fn_excluir_organizacao", () => {
       `insert into webhook_events_log (organization_id, channel_session_id, raw_body)
        values ($1, $2, '{"telefone":"5511999999999"}')`,
       [ORG_X, SESS_X],
+    );
+  });
+
+  // A trilha que a org deixa: duas linhas de auditoria dela, como as que a
+  // LGPD exige guardar. A FK `organization_id` é SET NULL — elas sobrevivem e
+  // perdem a org; a lápide guarda o que DELIMITA essa trilha.
+  beforeAll(async () => {
+    await pool.query(
+      `insert into api_audit_log (organization_id, actor_user_id, action, resource_type, resource_id, created_at)
+       values ($1, $2, 'lgpd.redact_executed', 'contact', gen_random_uuid(), now() - interval '3 days'),
+              ($1, $2, 'lgpd.export_generated', 'contact', gen_random_uuid(), now() - interval '1 day')`,
+      [ORG_X, USER_SO_X],
     );
   });
 
@@ -245,6 +254,54 @@ describe("fn_excluir_organizacao", () => {
     expect(lapide.rows[0]!.metadata.lgpd_requests as unknown[]).toHaveLength(1);
   });
 
+  it("a lápide delimita a trilha que perdeu a org: ids dos membros, contagem e intervalo das linhas", async () => {
+    const { rows } = await pool.query<{ metadata: Record<string, unknown> }>(
+      `select metadata from api_audit_log where action = 'organization.deleted' and resource_id = $1`,
+      [ORG_X],
+    );
+    const m = rows[0]!.metadata as {
+      membros: string[];
+      auditoria: { linhas: number; primeira_em: string; ultima_em: string };
+    };
+    expect(new Set(m.membros)).toEqual(new Set([USER_SO_X, USER_X_E_B, ADMIN_PLAT]));
+    // As duas semeadas e o que os gatilhos da própria org gravaram no caminho.
+    expect(m.auditoria.linhas).toBeGreaterThanOrEqual(2);
+    expect(new Date(m.auditoria.primeira_em).getTime()).toBeLessThan(new Date(m.auditoria.ultima_em).getTime());
+
+    // As linhas sobreviveram SEM a org (SET NULL) e cabem no que a lápide diz.
+    const trilha = await pool.query<{ n: string }>(
+      `select count(*) as n from api_audit_log
+        where organization_id is null and action like 'lgpd.%'
+          and actor_user_id = any($1::uuid[]) and created_at between $2 and $3`,
+      [m.membros, m.auditoria.primeira_em, m.auditoria.ultima_em],
+    );
+    expect(Number(trilha.rows[0]!.n)).toBe(2);
+  });
+
+  // Retomada (exclusão interrompida depois do commit): a lápide é a única
+  // memória do que ficou ligado lá fora, e a régua dos logins é recalculada.
+  it("a lápide guarda o inventário externo sem segredo, e fn_logins_sem_vinculo refaz a régua dos logins", async () => {
+    const { rows } = await pool.query<{ metadata: Record<string, unknown> }>(
+      `select metadata from api_audit_log where action = 'organization.deleted' and resource_id = $1`,
+      [ORG_X],
+    );
+    const inv = rows[0]!.metadata.inventario_externo as {
+      canais: Array<Record<string, unknown>>;
+      nuvemshop_store_id: string | null;
+    };
+    expect(inv.canais).toHaveLength(1);
+    expect(inv.canais[0]).toMatchObject({ id: SESS_X, waha_session_name: "gestao-tenants-x" });
+    expect(JSON.stringify(inv)).not.toMatch(/token|secret|encrypted/i);
+    expect(inv.nuvemshop_store_id).toBeNull();
+
+    const membros = rows[0]!.metadata.membros as string[];
+    const r = await pool.query<{ u: string[] }>("select public.fn_logins_sem_vinculo($1::uuid[]) as u", [membros]);
+    expect(r.rows[0]!.u).toEqual([USER_SO_X]);
+    await expect(
+      comoUsuario(USER_A, "select public.fn_logins_sem_vinculo($1::uuid[])", [membros]),
+    ).rejects.toThrow(/permission denied/i);
+  });
+
   it("organização inexistente é recusada com PT404", async () => {
     await expect(
       pool.query("select public.fn_excluir_organizacao($1, $2, $3, $4)", [
@@ -262,5 +319,43 @@ describe("fn_arquivos_da_organizacao", () => {
     await expect(
       comoUsuario(USER_A, "select * from public.fn_arquivos_da_organizacao($1)", [ORG_A]),
     ).rejects.toThrow(/permission denied/i);
+  });
+
+  // O PostgREST corta resposta de função em `max_rows` (1000) sem erro: a
+  // função pagina por cursor (bucket, nome), e a exclusão repete até a página
+  // curta. Aqui: o cursor percorre tudo uma vez só, e o teto não passa de 1000.
+  it("pagina por cursor (bucket, nome): todo arquivo da org uma vez, nenhum de outra, teto de 1000", async () => {
+    await pool.query(
+      `insert into storage.buckets (id, name) values ('gt-a', 'gt-a'), ('gt-b', 'gt-b') on conflict (id) do nothing`,
+    );
+    await pool.query(
+      `insert into storage.objects (bucket_id, name)
+       select case when g % 2 = 0 then 'gt-a' else 'gt-b' end, $1 || '/p/' || lpad(g::text, 5, '0')
+         from generate_series(1, 1005) g`,
+      [ORG_A],
+    );
+    await pool.query(`insert into storage.objects (bucket_id, name) values ('gt-a', $1 || '/alheio')`, [ORG_B]);
+    try {
+      const vistos: string[] = [];
+      const cursor: { apos: { bucket_id: string; name: string } | null } = { apos: null };
+      for (let voltas = 0; voltas < 20; voltas++) {
+        const { rows }: { rows: Array<{ bucket_id: string; name: string }> } = await pool.query(
+          "select * from public.fn_arquivos_da_organizacao($1, $2, $3, 300)",
+          [ORG_A, cursor.apos?.bucket_id ?? null, cursor.apos?.name ?? null],
+        );
+        vistos.push(...rows.map((r) => `${r.bucket_id}:${r.name}`));
+        if (rows.length < 300) break;
+        cursor.apos = rows[rows.length - 1]!;
+      }
+      expect(vistos).toHaveLength(1005);
+      expect(new Set(vistos).size).toBe(1005);
+      expect(vistos.some((v) => v.includes(ORG_B))).toBe(false);
+
+      const teto = await pool.query("select * from public.fn_arquivos_da_organizacao($1, null, null, 5000)", [ORG_A]);
+      expect(teto.rowCount).toBe(1000);
+    } finally {
+      await pool.query("delete from storage.objects where bucket_id in ('gt-a', 'gt-b')");
+      await pool.query("delete from storage.buckets where id in ('gt-a', 'gt-b')");
+    }
   });
 });

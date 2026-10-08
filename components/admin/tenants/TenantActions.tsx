@@ -38,6 +38,9 @@ export function TenantActions({ organization, counts }: TenantActionsProps) {
   const { id: organizationId, status, display_name: displayName } = organization;
   const canSuspend = status === "active";
   const isSuspended = status === "suspended";
+  // Nulo vale como administrativa (lib/organizacao/operante.ts). A por
+  // cobrança não se exclui: a assinatura seguiria cobrando no provedor.
+  const suspensaPorCobranca = isSuspended && organization.suspended_kind === "cobranca";
   const isRedacted = status === "redacted";
 
   return (
@@ -47,17 +50,13 @@ export function TenantActions({ organization, counts }: TenantActionsProps) {
           {t("Ações")}
         </h2>
 
-        {/* Impersonate (S-11.07) — o acompanhamento só vale para tenant ativo. */}
+        {/* Impersonate (S-11.07) */}
         <ImpersonateButton
           organizationId={organizationId}
           displayName={displayName}
-          disabled={!canSuspend}
+          disabled={isRedacted}
           disabledReason={
-            isRedacted
-              ? t("Tenant redigido — ação não disponível")
-              : isSuspended
-                ? t("Tenant suspenso — reative para acompanhar")
-                : undefined
+            isRedacted ? t("Tenant redigido — ação não disponível") : undefined
           }
         />
 
@@ -91,8 +90,8 @@ export function TenantActions({ organization, counts }: TenantActionsProps) {
           </Button>
         )}
 
-        {/* Delete — só depois de suspenso */}
-        {isSuspended && (
+        {/* Delete — só depois de suspenso, e nunca por cobrança */}
+        {isSuspended && !suspensaPorCobranca && (
           <Button
             className="w-full"
             variant="destructive"
@@ -105,6 +104,11 @@ export function TenantActions({ organization, counts }: TenantActionsProps) {
         {canSuspend && (
           <p className="text-xs text-muted-foreground">
             {t("Para excluir um tenant, suspenda-o primeiro.")}
+          </p>
+        )}
+        {suspensaPorCobranca && (
+          <p className="text-xs text-muted-foreground">
+            {t("Suspensa por falta de pagamento: não pode ser excluída enquanto houver cobrança pendente.")}
           </p>
         )}
 
