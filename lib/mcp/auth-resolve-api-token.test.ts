@@ -59,8 +59,7 @@ interface LinhaDoToken {
   revoked_at: string | null;
   expires_at: string | null;
   created_by: string;
-  /** Embed de `organizations(status)` — a organização dona do token. */
-  organizations?: { status: string } | null;
+  organizations: { status: string };
 }
 
 function linhaViva(patch: Partial<LinhaDoToken> = {}): LinhaDoToken {
@@ -71,6 +70,7 @@ function linhaViva(patch: Partial<LinhaDoToken> = {}): LinhaDoToken {
     revoked_at: null,
     expires_at: null,
     created_by: CRIADOR_ID,
+    organizations: { status: "active" },
     ...patch,
   };
 }
@@ -182,6 +182,13 @@ describe("resolveApiToken — os cinco motivos de recusa", () => {
   it("token com `expires_at` no passado é `expired`", async () => {
     armar(achou(linhaViva({ expires_at: NO_PASSADO })));
     expect(await reasonDe(PLAINTEXT)).toBe("expired");
+  });
+
+  it("token vivo de organização SUSPENSA é `org_suspended` e não registra uso", async () => {
+    const reg = armar(achou(linhaViva({ organizations: { status: "suspended" } })));
+    expect(await reasonDe(PLAINTEXT)).toBe("org_suspended");
+    expect(reg.updates).toEqual([]);
+    expect(reg.colunas.join(",")).toContain("organizations!inner(status)");
   });
 
   it("erro do banco é `lookup_failed` — falha de infra NÃO é token inválido", async () => {
@@ -318,6 +325,14 @@ const TABELA_DE_TRADUCAO: Array<{
     message: "Token expired.",
   },
   {
+    caso: "token vivo de organização suspensa (org_suspended)",
+    header: `Bearer ${PLAINTEXT}`,
+    resposta: achou(linhaViva({ organizations: { status: "suspended" } })),
+    mcpCode: -32002,
+    httpStatus: 403,
+    message: "Organization suspended.",
+  },
+  {
     caso: "banco falhou (lookup_failed) — o ÚNICO 500 da tabela",
     header: `Bearer ${PLAINTEXT}`,
     resposta: falhou,
@@ -377,6 +392,20 @@ describe("validateBearerToken — a tradução para MCP não mudou", () => {
     });
   });
 
+  // Decisão do dono (30/09): a ferramenta de privacidade atende empresa suspensa.
+  // Só o `/api/mcp` passa a opção; sem ela, a régua acima (403) vale.
+  it("com `permiteOrgSuspensa`, token de org suspensa autentica marcado `orgSuspensa`", async () => {
+    armar(achou(linhaViva({ organizations: { status: "suspended" } })));
+    const r = await validateBearerToken(`Bearer ${PLAINTEXT}`, { permiteOrgSuspensa: true });
+    expect(r).toMatchObject({ organizationId: ORG_ID, orgSuspensa: true });
+  });
+
+  it("com `permiteOrgSuspensa`, org que opera não ganha a marca", async () => {
+    armar(achou(linhaViva()));
+    const r = await validateBearerToken(`Bearer ${PLAINTEXT}`, { permiteOrgSuspensa: true });
+    expect(r).not.toHaveProperty("orgSuspensa");
+  });
+
   it("erro que NÃO é `ApiTokenError` sobe inteiro, sem virar recusa de auth", async () => {
     // Se a casca tivesse um `catch` genérico, um defeito de infraestrutura
     // (env faltando, client que não constrói) sairia como 401 e ninguém
@@ -392,36 +421,5 @@ describe("validateBearerToken — a tradução para MCP não mudou", () => {
       erro,
       "um erro de infraestrutura foi convertido em recusa de autenticação — o 500 desapareceu e virou 401",
     ).not.toBeInstanceOf(McpAuthError);
-  });
-});
-
-describe("organização suspensa (migration 0492)", () => {
-  it("token vivo de organização SUSPENSA é `tenant_suspended`", async () => {
-    armar(achou(linhaViva({ organizations: { status: "suspended" } })));
-    expect(await reasonDe(PLAINTEXT)).toBe("tenant_suspended");
-  });
-
-  it("vira 403 (não 401): o token é válido, a organização é que está parada", async () => {
-    armar(achou(linhaViva({ organizations: { status: "suspended" } })));
-    const r = await recusaMcp(`Bearer ${PLAINTEXT}`);
-    expect(r.httpStatus).toBe(403);
-    expect(r.mcpCode).toBe(-32002);
-  });
-
-  it("token revogado de organização suspensa continua respondendo como revogado", async () => {
-    armar(
-      achou(
-        linhaViva({
-          revoked_at: "2026-09-01T10:00:00.000Z",
-          organizations: { status: "suspended" },
-        }),
-      ),
-    );
-    expect(await reasonDe(PLAINTEXT)).toBe("revoked");
-  });
-
-  it("controle: a mesma linha com organização ATIVA resolve", async () => {
-    armar(achou(linhaViva({ organizations: { status: "active" } })));
-    await expect(resolveApiToken(PLAINTEXT)).resolves.toMatchObject({ organizationId: ORG_ID });
   });
 });

@@ -30,7 +30,7 @@ function sqlLiteral(v: unknown): string {
   return sqlString(String(v));
 }
 
-type FilterOp = "eq" | "neq" | "lte" | "lt" | "in" | "not_in" | "or";
+type FilterOp = "eq" | "lte" | "lt" | "in" | "or";
 interface Filter {
   op: FilterOp;
   col?: string;
@@ -89,24 +89,6 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: { message: string
     return this;
   }
 
-  /**
-   * `neq` e `not(col, "in", ...)` entraram com a migration 0492: o dreno exclui
-   * as organizações que não operam (`lib/tenants/estado.ts`) — `neq` para
-   * listá-las, `not in` para tirá-las da consulta. Mesmo caso do `lt` acima:
-   * sem eles, o instrumento estoura e a lógica do dreno leva a culpa.
-   */
-  neq(col: string, val: unknown): this {
-    this.filters.push({ op: "neq", col, val });
-    return this;
-  }
-
-  not(col: string, op: string, raw: string): this {
-    if (op !== "in") throw new Error(`fakeAdminClient: unsupported .not() op: ${op}`);
-    const vals = raw.replace(/^\(|\)$/g, "").split(",").filter(Boolean);
-    this.filters.push({ op: "not_in", col, val: vals });
-    return this;
-  }
-
   in(col: string, val: unknown[]): this {
     this.filters.push({ op: "in", col, val });
     return this;
@@ -132,9 +114,6 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: { message: string
     if (!this.filters.length) return "";
     const clauses = this.filters.map((f) => {
       if (f.op === "eq") return `${f.col} = ${sqlLiteral(f.val)}`;
-      if (f.op === "neq") return `${f.col} <> ${sqlLiteral(f.val)}`;
-      if (f.op === "not_in")
-        return `${f.col} not in (${(f.val as unknown[]).map(sqlLiteral).join(",")})`;
       if (f.op === "lte") return `${f.col} <= ${sqlLiteral(f.val)}`;
       if (f.op === "lt") return `${f.col} < ${sqlLiteral(f.val)}`;
       if (f.op === "in") return `${f.col} in (${(f.val as unknown[]).map(sqlLiteral).join(",")})`;
@@ -235,6 +214,7 @@ function rowState(id: string): {
 const calls: string[] = [];
 registerHandler({
   key: "test-drain-handler",
+  naOrgParada: "roda",
   events: ["test.drain_case"],
   async handle(row: EventRow): Promise<HandlerResult> {
     calls.push(row.id);
@@ -254,6 +234,7 @@ registerHandler({
 // outro sempre pede retry (+1h) — cobre o mix retry+error num mesmo tick.
 registerHandler({
   key: "test-drain-multi-err",
+  naOrgParada: "roda",
   events: ["test.drain_multi"],
   async handle(): Promise<HandlerResult> {
     return { consumer_key: "test-drain-multi-err", status: "error", detail: "multi-boom" };
@@ -261,6 +242,7 @@ registerHandler({
 });
 registerHandler({
   key: "test-drain-multi-retry",
+  naOrgParada: "roda",
   events: ["test.drain_multi"],
   async handle(): Promise<HandlerResult> {
     return {
@@ -275,6 +257,7 @@ registerHandler({
 // retry_at — cobre o fallback de backoff (senão busy-loop a cada tick).
 registerHandler({
   key: "test-drain-retry-no-backoff",
+  naOrgParada: "roda",
   events: ["test.drain_retry_no_backoff"],
   async handle(): Promise<HandlerResult> {
     return { consumer_key: "test-drain-retry-no-backoff", status: "retry" };

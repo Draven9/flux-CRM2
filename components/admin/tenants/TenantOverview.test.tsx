@@ -56,6 +56,7 @@ const ORG: TenantOrganization = {
   locale: "pt-BR",
   currency: "BRL",
   media_retention_days: 180,
+  media_retention_enforced: true,
   dpo_email: null,
   privacy_policy_url: null,
 };

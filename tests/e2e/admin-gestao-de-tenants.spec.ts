@@ -7,8 +7,8 @@
  * `/admin/tenants/<id>`, e um MEMBRO do tenant, logado ao mesmo tempo.
  *
  *  1. Suspender corta o membro de verdade: a próxima navegação dele cai em
- *     `/account-suspended`, e a API responde `403 tenant_suspended`. Até a
- *     migration 0492 a suspensão só escondia a tela (auditoria 28/09/2026, P3).
+ *     `/account-suspended`, e a API responde `403 org_suspended`. Desde a
+ *     migration 0501 (do produto) a suspensão corta pela aplicação e pela fila.
  *  2. O e-mail de acesso se corrige pela tela, e a prova é o LOGIN com o
  *     endereço novo — o antigo deixa de entrar.
  *  3. Reativar devolve o acesso.
@@ -135,7 +135,7 @@ test("suspender, corrigir o e-mail, reativar, editar e excluir — pela tela", a
   await expect(membro.getByRole("heading", { name: "Conta suspensa" })).toBeVisible();
   const api = await membro.request.get("/api/v1/contacts");
   expect(api.status()).toBe(403);
-  expect(((await api.json()) as { error: { code: string } }).error.code).toBe("tenant_suspended");
+  expect(((await api.json()) as { error: { code: string } }).error.code).toBe("org_suspended");
   await foto(membro, "03-membro-ve-conta-suspensa");
 
   // ── 2. Corrigir o e-mail de acesso ──────────────────────────────────────

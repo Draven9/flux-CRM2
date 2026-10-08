@@ -14,9 +14,15 @@ import { redirect } from "next/navigation";
 import { logger } from "@/lib/logger";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { empresaExigeMfa, exigeCadastroDeMfa } from "@/lib/auth/politica-mfa";
+import {
+  empresaExigeMfa,
+  avaliaPoliticaDeMfa,
+  politicaDaEmpresa,
+  type ExigenciaDeMfa,
+  type PapelMinimoDeMfa,
+} from "@/lib/auth/politica-mfa";
 import { normalizarIdioma } from "@/lib/i18n/idiomas";
-import { organizacaoOpera } from "@/lib/tenants/estado";
+import { STATUS_OPERANTE, ehOperante } from "@/lib/organizacao/operante";
 import type { AuthUser, Role, UserOrgMembership, ActiveOrg } from "./types";
 
 const ACTIVE_ORG_COOKIE = "active_org";
@@ -44,7 +50,8 @@ interface OrgJoin {
   timezone: string | null;
   currency: string | null;
   country: string | null;
-  status?: string | null;
+  status?: string;
+  suspended_kind?: string | null;
 }
 
 /** O mesmo `organizations`, alcançado por outro embed: só as portas da EMPRESA. */
@@ -75,31 +82,20 @@ async function localeDaOrgAtiva(memberships: UserOrgMembership[]): Promise<strin
  * da organização ativa, o sorteio decide TAMBÉM em que língua o sistema abre.
  * As duas coisas andam juntas: não tire a ordenação de lá sem resolver isto.
  */
-export function escolherMembroAtivo(
+function escolherMembroAtivo(
   memberships: UserOrgMembership[],
   cookieOrg: string | undefined,
 ): UserOrgMembership | null {
   if (memberships.length === 0) return null;
   if (cookieOrg) {
+    // Com cookie, MANTÉM mesmo a suspensa: é por ela que a pessoa chega ao hub
+    // `/account-suspended` para pagar, pedir LGPD ou trocar de empresa.
     const achado = memberships.find((o) => o.organization_id === cookieOrg);
     if (achado) return achado;
   }
-  // Sem cookie, a primeira organização que OPERA: quem pertence a uma suspensa
-  // e a uma ativa entra na ativa, em vez de parar na tela de suspensão por
-  // causa da ordem da lista. Só quando todas estão paradas a escolha cai na
-  // primeira — e aí o layout mostra a suspensão, que é a verdade.
-  return memberships.find((o) => organizacaoOpera(o.status)) ?? memberships[0] ?? null;
-}
-
-/**
- * A organização que a pessoa ESCOLHEU (cookie → primeira que opera), sem
- * filtrar pelo estado. É o que o layout usa para distinguir "conta suspensa" de
- * "sem organização" quando `resolveActiveOrg` devolve `null`.
- */
-export async function organizacaoEscolhida(authUser: AuthUser): Promise<UserOrgMembership | null> {
-  if (authUser.support) return null;
-  const store = await cookies();
-  return escolherMembroAtivo(authUser.organizations, store.get(ACTIVE_ORG_COOKIE)?.value);
+  // Sem cookie, a primeira OPERANTE na mesma ordem (`accepted_at`,
+  // `organization_id`); a primeira de todas só quando nenhuma opera.
+  return memberships.find((o) => ehOperante(o.org_status)) ?? memberships[0] ?? null;
 }
 
 /**
@@ -192,7 +188,7 @@ export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
     await Promise.all([
       supabase
         .from("platform_admins")
-        .select("user_id, revoked_at")
+        .select("user_id, scope, revoked_at")
         .eq("user_id", user.id)
         .is("revoked_at", null)
         .maybeSingle(),
@@ -206,7 +202,7 @@ export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
           // issue #1341 acabou de engordar), e o alias traz só as portas da EMPRESA.
           // `timezone` veio do main (fuso da organização nas listas, #1290) e convive
           // com o alias: um embed por relação, sem renomear o que já existia.
-          "organization_id, role, interface_settings, accepted_at, organizations(display_name, locale, timezone, currency, country, status), interface_da_empresa:organizations(interface_settings)",
+          "organization_id, role, interface_settings, accepted_at, organizations(display_name, locale, timezone, currency, country, status, suspended_kind), interface_da_empresa:organizations(interface_settings)",
         )
         .eq("user_id", user.id)
         .is("revoked_at", null)
@@ -247,35 +243,14 @@ export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
   }
 
   const rows = (rawMemberships ?? []) as RawMembershipRow[];
-  const primeiro = <T>(v: T | T[] | null): T | null => (Array.isArray(v) ? (v[0] ?? null) : v);
-
-  // A organização SUSPENSA sai do alcance da RLS (migration 0492): o embed dela
-  // volta nulo, mas o vínculo continua na lista. Para essas — e só essas — o
-  // estado e o nome vêm pelo service role, filtrados pelos ids do próprio
-  // vínculo do usuário (fonte confiável). Sem isto, a pessoa de uma empresa
-  // suspensa veria "—" e cairia na tela de "sem organização".
-  const foraDoAlcance = rows
-    .filter((r) => !primeiro(r.organizations))
-    .map((r) => r.organization_id);
-  const paradas = new Map<string, OrgJoin>();
-  if (foraDoAlcance.length > 0) {
-    const { data: orgsParadas, error: paradasErro } = await createAdminClient()
-      .from("organizations")
-      .select("id, display_name, locale, timezone, currency, country, status")
-      .in("id", foraDoAlcance);
-    if (paradasErro) {
-      throw new Error(`auth_permissions_unavailable: ${paradasErro.message}`);
-    }
-    for (const o of (orgsParadas ?? []) as (OrgJoin & { id: string })[]) paradas.set(o.id, o);
-  }
-
   const memberships: UserOrgMembership[] = rows.map((row) => {
-    const org = primeiro(row.organizations) ?? paradas.get(row.organization_id) ?? null;
-    const empresa = primeiro(row.interface_da_empresa);
+    const orgs = row.organizations;
+    const org = Array.isArray(orgs) ? (orgs[0] ?? null) : orgs;
+    const empresas = row.interface_da_empresa;
+    const empresa = Array.isArray(empresas) ? (empresas[0] ?? null) : empresas;
     return {
       organization_id: row.organization_id,
       organization_name: org?.display_name ?? "—",
-      status: (org?.status as UserOrgMembership["status"] | undefined) ?? undefined,
       role: row.role as Role,
       // EMPRESA ∩ VÍNCULO (migration 0367): a empresa escolhe o universo de
       // portas da instalação, o vínculo escolhe menos dentro dele. Até aqui o
@@ -285,6 +260,8 @@ export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
       timezone: org?.timezone ?? null,
       currency: org?.currency ?? null,
       country: org?.country ?? null,
+      org_status: org?.status ?? null,
+      suspended_kind: org?.suspended_kind ?? null,
     };
   });
 
@@ -310,6 +287,7 @@ export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
     full_name: fullName,
     avatar_url: avatarUrl,
     is_platform_admin: !!paRow,
+    platform_admin_scope: paRow?.scope ?? null,
     locale,
     idioma,
     timezone,
@@ -319,11 +297,17 @@ export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
 });
 
 /**
- * Resolves the active organization for the current request.
- * Priority: cookie `active_org` (if member of) → first membership.
- * Returns null if user has zero memberships.
+ * A organização ativa SEM o portão de suspensão — o corpo que `resolveActiveOrg`
+ * tinha até a spec da cobrança (§4, item 3).
+ *
+ * Só para quem PRECISA enxergar a org parada: `requireRole` (responde 403
+ * `org_suspended` em JSON, não 307), o hub `/account-suspended`, leitura que não
+ * pode sumir para o suspenso (`lib/legal/operador.ts`) e o início de um
+ * acompanhamento, que só guarda para onde voltar (`admin/tenants/[id]/impersonate`).
+ * Rota de API usa `orgAtivaDaApi` (lib/auth/require-role.ts: 403 JSON); o resto,
+ * `resolveActiveOrg`.
  */
-export const resolveActiveOrg = cache(async (authUser: AuthUser): Promise<ActiveOrg | null> => {
+export const orgAtivaSemPortao = cache(async (authUser: AuthUser): Promise<ActiveOrg | null> => {
   if (authUser.support) {
     if (authUser.support.status !== "active") redirect("/support-ended");
     // Acompanhamento não tem membership, e era por isso que este caminho
@@ -345,16 +329,15 @@ export const resolveActiveOrg = cache(async (authUser: AuthUser): Promise<Active
       timezone: orgDoSuporte?.timezone ?? null,
       currency: orgDoSuporte?.currency ?? null,
       country: orgDoSuporte?.country ?? null,
+      // `fn_support_context` só devolve status 'active' com a org em 'active'
+      // (`o.status <> 'active'` vira 'revoked'), e a linha acima já saiu.
+      org_status: STATUS_OPERANTE,
+      suspended_kind: null,
     };
   }
   const store = await cookies();
   const ativo = escolherMembroAtivo(authUser.organizations, store.get(ACTIVE_ORG_COOKIE)?.value);
   if (!ativo) return null;
-  // Organização que não opera NUNCA é a ativa. Todo consumidor desta função —
-  // rotas via `requireRole`, server actions, layouts — já trata `null` como
-  // "sem organização", então o corte vale em todos de uma vez, inclusive nos
-  // que gravam pelo service role e não passam pela RLS.
-  if (!organizacaoOpera(ativo.status)) return null;
   return {
     orgId: ativo.organization_id,
     name: ativo.organization_name,
@@ -363,7 +346,25 @@ export const resolveActiveOrg = cache(async (authUser: AuthUser): Promise<Active
     timezone: ativo.timezone ?? null,
     currency: ativo.currency ?? null,
     country: ativo.country ?? null,
+    org_status: ativo.org_status ?? null,
+    suspended_kind: ativo.suspended_kind ?? null,
   };
+});
+
+/**
+ * Resolves the active organization for the current request.
+ * Priority: cookie `active_org` (if member of) → first OPERANT membership → first.
+ * Returns null if user has zero memberships.
+ *
+ * Org NÃO operante redireciona para `/account-suspended` (mesmo precedente do
+ * `/support-ended`). É isto que fecha páginas, layouts e server actions de uma vez.
+ * NUNCA em rota de API (`app/api/**`): o `fetch` seguiria o 307 para HTML — lá
+ * é `orgAtivaDaApi` (cerca `tests/unit/api-nao-redireciona-org-suspensa.test.ts`).
+ */
+export const resolveActiveOrg = cache(async (authUser: AuthUser): Promise<ActiveOrg | null> => {
+  const org = await orgAtivaSemPortao(authUser);
+  if (org && !ehOperante(org.org_status)) redirect("/account-suspended");
+  return org;
 });
 
 /**
@@ -395,30 +396,24 @@ export const isMfaEnrolled = cache(async (): Promise<boolean> => {
 });
 
 /**
- * Quem é OBRIGADO a cadastrar a verificação em duas etapas.
+ * A política de CADASTRO completa para quem está na tela — as três saídas de
+ * `avaliaPoliticaDeMfa` (`lib/auth/politica-mfa.ts`).
  *
- * ⚠️ ISTO DEIXOU DE SER UMA CONSTANTE. A regra era
- * `isPlatformAdmin || role === "admin"` — sem opção —, e como o `install.sh`
- * cria o dono da instalação como platform admin, TODA instalação self-host
- * forçava TOTP antes de a pessoa usar o produto. Medido percorrendo o wizard: o
- * botão "Começar a usar" entregava o dono num bloqueador de tela cheia, um
- * sétimo passo que a barra de progresso nunca anunciou.
+ * As duas leituras vêm daqui porque o layout precisa delas de qualquer forma;
+ * quem já tem a política em mãos deve chamar `avaliaPoliticaDeMfa` direto.
  *
- * Agora a resposta vem da POLÍTICA — `platform_admins.mfa_required` para o
- * platform admin, `organizations.settings.security.mfa_required` para o admin do
- * tenant —, e o padrão de ambos é não exigir. A regra pura, com o porquê de cada
- * ramo, vive em `lib/auth/politica-mfa.ts`.
- *
- * Carrega as duas leituras porque o layout precisa delas de qualquer forma; quem
- * já tem a política em mãos deve chamar `exigeCadastroDeMfa` direto.
+ * A carência (`mfa_grace_days`) só é resolvida quando ela existe: a âncora é
+ * `max(mfa_policy_changed_at, user_organizations.accepted_at)`, e buscar o
+ * `accepted_at` de todo mundo custaria uma consulta em TODA requisição para
+ * resolver um caso que a grande maioria das instalações não tem.
  */
-export const requiresMfa = cache(
+export const exigenciaDeMfa = cache(
   async (
     role: Role | undefined,
     isPlatformAdmin: boolean,
     userId?: string,
     orgId?: string,
-  ): Promise<boolean> => {
+  ): Promise<ExigenciaDeMfa> => {
     const admin = createAdminClient();
 
     let plataformaExige: boolean | null = null;
@@ -433,6 +428,10 @@ export const requiresMfa = cache(
     }
 
     let empresaExige = false;
+    let papelMinimo: PapelMinimoDeMfa | null = null;
+    let diasDeCarencia = 0;
+    let mudouEm: Date | null = null;
+    let aceitoEm: string | null = null;
     if (orgId) {
       const { data } = await admin
         .from("organizations")
@@ -440,10 +439,62 @@ export const requiresMfa = cache(
         .eq("id", orgId)
         .maybeSingle();
       empresaExige = empresaExigeMfa(data?.settings);
+      const cfg = politicaDaEmpresa(data?.settings);
+      papelMinimo = cfg.papelMinimo;
+      diasDeCarencia = cfg.diasDeCarencia;
+      mudouEm = cfg.mudouEm;
+
+      if (userId && diasDeCarencia > 0) {
+        const { data: vinculo } = await admin
+          .from("user_organizations")
+          .select("accepted_at")
+          .eq("organization_id", orgId)
+          .eq("user_id", userId)
+          .maybeSingle();
+        aceitoEm = (vinculo?.accepted_at as string | null | undefined) ?? null;
+      }
     }
 
-    return exigeCadastroDeMfa({ role, isPlatformAdmin, plataformaExige, empresaExige });
+    return avaliaPoliticaDeMfa({
+      role,
+      isPlatformAdmin,
+      plataformaExige,
+      empresaExige,
+      papelMinimo,
+      diasDeCarencia,
+      mudouEm,
+      aceitoEm,
+    });
   },
+);
+
+/**
+ * Quem é OBRIGADO A CADASTRAR a verificação em duas etapas.
+ *
+ * ⚠️ ISTO DEIXOU DE SER UMA CONSTANTE. A regra era
+ * `isPlatformAdmin || role === "admin"`, sem opção —, e como o `install.sh`
+ * cria o dono da instalação como platform admin, TODA instalação self-host
+ * forçava TOTP antes de a pessoa usar o produto. Medido percorrendo o wizard: o
+ * botão "Começar a usar" entregava o dono num bloqueador de tela cheia, um
+ * sétimo passo que a barra de progresso nunca anunciou.
+ *
+ * Agora a resposta vem da POLÍTICA — `platform_admins.mfa_required` para o
+ * platform admin, `organizations.settings.security.mfa_required` /
+ * `.mfa_required_min_role` para o tenant —, e o padrão de ambos é não exigir. A
+ * regra pura, com o porquê de cada ramo, vive em `lib/auth/politica-mfa.ts`.
+ *
+ * O booleano que este retorno devolve é o de BLOQUEIO (`bloqueia`), não o de
+ * obrigação: é ele que o layout do `/app` transforma no `MfaEnrollGate` de tela
+ * cheia, e durante a carência (`mfa_grace_days`) a pessoa já está obrigada mas a
+ * tela ainda não pode travar. Quem precisa da distinção chama `exigenciaDeMfa`.
+ */
+export const requiresMfa = cache(
+  async (
+    role: Role | undefined,
+    isPlatformAdmin: boolean,
+    userId?: string,
+    orgId?: string,
+  ): Promise<boolean> => (await exigenciaDeMfa(role, isPlatformAdmin, userId, orgId)).bloqueia,
 );
 
 /**

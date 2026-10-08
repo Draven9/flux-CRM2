@@ -38,6 +38,7 @@ export async function gravarDadosCadastrais(
       locale: dados.locale,
       currency: dados.currency,
       media_retention_days: dados.media_retention_days,
+      media_retention_enforced: dados.media_retention_enforced,
       dpo_email: dados.dpo_email ?? null,
       privacy_policy_url: dados.privacy_policy_url ?? null,
     })

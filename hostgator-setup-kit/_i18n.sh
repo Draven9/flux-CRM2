@@ -33,11 +33,12 @@ _I18N_TABELA=0
 if [ $((BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1])) -ge "${I18N_BASH_MINIMO:-404}" ]; then
 _I18N_TABELA=1
 declare -A _ES=(
-  ["Este servidor usa arquitetura '{1}', mas as imagens publicadas do DeskcommCRM hoje são linux/amd64."]="Este servidor usa arquitectura '{1}', pero las imágenes publicadas de DeskcommCRM hoy son linux/amd64."
-  ["  Use uma VPS x86_64/amd64. Repetir o download não resolve; ARM64 só será suportado quando houver imagens multi-arquitetura."]="  Usa una VPS x86_64/amd64. Repetir la descarga no soluciona nada; ARM64 solo se admitirá cuando existan imágenes multiarquitectura."
-  ["Este servidor usa arquitetura '{1}', e as imagens publicadas do DeskcommCRM são só linux/amd64."]="Este servidor usa arquitectura '{1}', y las imágenes publicadas de DeskcommCRM son solo linux/amd64."
+  ["Este servidor usa arquitetura '{1}', mas o DeskcommCRM não publica imagens para ela (linux/amd64 e linux/arm64 estão disponíveis)."]="Este servidor usa arquitectura '{1}', pero DeskcommCRM no publica imágenes para ella (linux/amd64 y linux/arm64 están disponibles)."
+  ["  Use uma VPS x86_64/amd64 ou ARM64/aarch64. Repetir o download não resolve."]="  Usa una VPS x86_64/amd64 o ARM64/aarch64. Repetir la descarga no soluciona nada."
+  ["Este servidor usa arquitetura '{1}', e as imagens publicadas do DeskcommCRM são linux/amd64 e linux/arm64."]="Este servidor usa arquitectura '{1}', y las imágenes publicadas de DeskcommCRM son linux/amd64 y linux/arm64."
+  ["  (WAHA trocado para a variante oficial ARM64: {1})"]="  (WAHA cambiado a la variante oficial ARM64: {1})"
   ["Como esta instalação JÁ EXISTE, sigo em frente: as imagens da versão alvo serão construídas nesta própria VPS."]="Como esta instalación YA EXISTE, sigo adelante: las imágenes de la versión destino se construirán en esta misma VPS."
-  ["Leva de 15 a 25 minutos. Uma instalação NOVA nesta arquitetura precisaria de imagens multi-arquitetura, que o DeskcommCRM ainda não publica."]="Tarda de 15 a 25 minutos. Una instalación NUEVA en esta arquitectura necesitaría imágenes multiarquitectura, que DeskcommCRM todavía no publica."
+  ["Leva de 15 a 25 minutos. Uma instalação NOVA exige x86_64/amd64 ou ARM64/aarch64 com imagens publicadas."]="Tarda de 15 a 25 minutos. Una instalación NUEVA requiere x86_64/amd64 o ARM64/aarch64 con imágenes publicadas."
   ["  (rede '{1}' criada — é por ela que o Traefik alcança o CRM)"]="  (red '{1}' creada: por ella Traefik llega al CRM)"
   ["A rede Docker '{1}' (a do Nginx Proxy Manager) não existe.
 Rode 'docker network ls', identifique a rede do seu NPM (Settings > a que o
@@ -120,7 +121,7 @@ sin eso un contenedor de compose común no puede entrar en ella."
   ["derruba o que subiu"]="derriba lo que se levantó"
   ["começa de novo"]="empieza de nuevo"
   ["apaga o marcador desta instalação"]="borra el marcador de esta instalación"
-  ["⚠ Não consegui gravar o marcador desta instalação (arquivo .deskcomm-instalado). O CRM está no ar; numa VPS ARM a atualização pode pedir a VPS x86_64 até o marcador existir."]="⚠ No pude escribir el marcador de esta instalación (archivo .deskcomm-instalado). El CRM está en línea; en una VPS ARM la actualización puede pedir la VPS x86_64 hasta que el marcador exista."
+  ["⚠ Não consegui gravar o marcador desta instalação (arquivo .deskcomm-instalado). O CRM está no ar; numa arquitetura sem imagens publicadas, a atualização pode pedir uma VPS suportada até o marcador existir."]="⚠ No pude escribir el marcador de esta instalación (archivo .deskcomm-instalado). El CRM está en línea; en una arquitectura sin imágenes publicadas, la actualización puede pedir una VPS compatible hasta que exista el marcador."
   ["Se o schema chegou a ser aplicado e você quer o banco limpo de novo,"]="Si el esquema llegó a aplicarse y quieres la base de datos limpia de nuevo,"
   ["abra o Supabase > SQL Editor e rode (ATENÇÃO: apaga todos os dados):"]="abre Supabase > SQL Editor y ejecuta (ATENCIÓN: borra todos los datos):"
 
@@ -147,6 +148,9 @@ sin eso un contenedor de compose común no puede entrar en ella."
   ["Volte em Settings > Database e copie a do Session pooler (o host termina em .pooler.supabase.com)."]="Vuelve a Settings > Database y copia la del Session pooler (el host termina en .pooler.supabase.com)."
   ["Essa connection string é do projeto '{1}', mas a URL que você deu é do projeto '{2}'. Precisam ser o mesmo projeto."]="Esa connection string es del proyecto '{1}', pero la URL que diste es del proyecto '{2}'. Tienen que ser el mismo proyecto."
   ["Não consegui conectar no banco. O Postgres respondeu:"]="No pude conectar con la base de datos. Postgres respondió:"
+  ["O Postgres recusou o certificado TLS: a cadeia dele não está na trust store desta máquina (SELF_SIGNED_CERT_IN_CHAIN)."]="Postgres rechazó el certificado TLS: su cadena no está en el trust store de esta máquina (SELF_SIGNED_CERT_IN_CHAIN)."
+  ["SUPABASE_SSL_ROOT_CERT já está declarada — confira se o arquivo é o prod-ca-2021.crt oficial do Supabase e se o hostname da connection string bate com o certificado."]="SUPABASE_SSL_ROOT_CERT ya está declarada — comprueba que el archivo es el prod-ca-2021.crt oficial de Supabase y que el hostname de la connection string coincide con el certificado."
+  ["Declare SUPABASE_SSL_ROOT_CERT no .env, apontando para a CA oficial do Supabase:"]="Declara SUPABASE_SSL_ROOT_CERT en el .env, apuntando a la CA oficial de Supabase:"
   ["Quase sempre é a senha com caractere especial: na URL ela precisa ser codificada."]="Casi siempre es la contraseña con un carácter especial: en la URL debe estar codificada."
   ["Troque  @ por %40   :  por %3A   /  por %2F   ?  por %3F   #  por %23"]="Cambia  @ por %40   :  por %3A   /  por %2F   ?  por %3F   #  por %23"
   ["Senha do banco errada. É a senha do PROJETO (definida ao criá-lo), não a da sua conta Supabase."]="Contraseña de la base de datos incorrecta. Es la contraseña del PROYECTO (definida al crearlo), no la de tu cuenta de Supabase."
@@ -292,7 +296,7 @@ y, si de verdad es un Traefik, pon REVERSE_PROXY=traefik en el .env y vuelve a e
   ["Idioma do sistema — 1) Português  2) Español (Enter = Português)"]="Idioma del sistema — 1) Português  2) Español (Enter = Português)"
   ["Cor da sua marca em hex, ex.: #7a5cd6 (Enter usa a cor do sistema)"]="Color de tu marca en hex, ej.: #7a5cd6 (Enter usa el color del sistema)"
   ["E-mail de suporte que SEUS clientes veem (Enter pula)"]="Correo de soporte que ven TUS clientes (Enter lo salta)"
-  ["Chave da Resend — envia convite e e-mail de LGPD (resend.com/api-keys, Enter pula)"]="Clave de Resend — envía invitación y correo de LGPD (resend.com/api-keys, Enter la salta)"
+  ["Chave da Resend — envia convite e e-mail de LGPD (resend.com/api-keys; Enter pula: dá para configurar depois, em Admin → E-mail)"]="Clave de Resend — envía invitación y correo de LGPD (resend.com/api-keys; Enter la salta: puedes configurarlo después, en Admin → E-mail)"
   ["Remetente dos e-mails, de um domínio verificado na Resend (Enter pula)"]="Remitente de los correos, de un dominio verificado en Resend (Enter lo salta)"
 
   # ── install.sh: entrevista y pantalla de confirmación ────────────────────
@@ -403,6 +407,17 @@ identifica su red y pon TRAEFIK_NETWORK=<nombre> en el .env antes de volver a in
   ["ainda não funciona é o agente: ele responde quando uma credencial existir."]="todavía no funciona es el agente: responderá en cuanto exista una credencial."
   ["Quando tiver a chave da {1}, cadastre em:"]="Cuando tengas la clave de {1}, regístrala en:"
   ["A chave fica CIFRADA no banco — não precisa mexer no .env nem reiniciar nada."]="La clave queda CIFRADA en la base de datos — no hace falta tocar el .env ni reiniciar nada."
+
+  # ── install.sh: pendencia_do_email() ─────────────────────────────────────
+  ["O envio de e-mail ainda não funciona"]="El envío de correo todavía no funciona"
+  ["Você deixou a chave da Resend para depois e não preencheu um SMTP. O CRM"]="Dejaste la clave de Resend para después y no completaste un SMTP. El CRM"
+  ["está no ar; o que não sai é o convite para a equipe e o e-mail com o PDF"]="está activo; lo que no sale es la invitación para el equipo y el correo con el PDF"
+  ["de LGPD."]="de LGPD."
+  ["Para ligar, cadastre em Admin → E-mail o servidor SMTP próprio ou o"]="Para activarlo, registra en Admin → E-mail el servidor SMTP propio o el"
+  ["serviço externo (Resend). O que a tela salva fica CIFRADO no banco e"]="servicio externo (Resend). Lo que la pantalla guarda queda CIFRADO en la base de datos y"
+  ["prevalece sobre o .env."]="prevalece sobre el .env."
+  ["No SEU Supabase, os e-mails de acesso (senha, cadastro) também saem pelo"]="En TU Supabase, los correos de acceso (contraseña, registro) también salen por el"
+  ["SMTP do CRM. Depois de salvar na tela, rode:"]="SMTP del CRM. Después de guardar en la pantalla, ejecuta:"
 
   # ── install.sh: creación del admin, arranque de la stack, healthcheck ───
   ["✓ dono criado e promovido a super-admin"]="✓ dueño creado y promovido a super-admin"

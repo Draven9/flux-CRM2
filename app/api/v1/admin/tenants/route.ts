@@ -3,8 +3,7 @@ import { createTenantSchema } from "@/lib/schemas/tenant-creation";
 import { issueInvite } from "@/lib/auth/issue-invite";
 import { type NextRequest } from "next/server";
 import { z } from "zod";
-import { requirePlatformAdmin } from "@/lib/auth/requirePlatformAdmin";
-import { requirePlatformAdminWrite } from "@/lib/auth/requirePlatformAdminWrite";
+import { falhaDaEscritaDePlatformAdmin, requirePlatformAdmin, requirePlatformAdminEscrita, type PlatformAdminContext } from "@/lib/auth/requirePlatformAdmin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
@@ -156,9 +155,12 @@ export async function POST(req: NextRequest) {
 
   const requestId = randomUUID();
 
-  const guarda = await requirePlatformAdminWrite(requestId);
-  if (!guarda.ok) return guarda.response;
-  const adminCtx = guarda.ctx;
+  let adminCtx: PlatformAdminContext;
+  try {
+    adminCtx = await requirePlatformAdminEscrita();
+  } catch (err) {
+    return falhaDaEscritaDePlatformAdmin(err, requestId);
+  }
   const key = req.headers.get("Idempotency-Key") ?? randomUUID();
   if (!z.string().uuid().safeParse(key).success) {
     return fail("validation_error", "Idempotency-Key deve ser UUID", 400, { requestId });
