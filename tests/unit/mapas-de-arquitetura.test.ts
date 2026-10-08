@@ -180,6 +180,23 @@ describe("mapas de arquitetura — coerência interna", () => {
     }
   });
 
+  it("a suspensão que suspende está no mapa, e nenhuma peça dela é ilha", () => {
+    // O caso concreto do DoD 13 para a PR 1 da cobrança do revendedor. O laço
+    // de retorno é `fnReativar → itemCentral → central → fila`: é por ele que
+    // uma pessoa revisa o que chegou enquanto a IA estava calada.
+    const m = JSON.parse(
+      fs.readFileSync(path.join(DIR, "suspensao-de-organizacao.architecture.json"), "utf8"),
+    ) as Mapa;
+    const grau = (id: string) => (m.edges ?? []).filter((e) => e.from === id || e.to === id).length;
+    for (const n of m.nodes!) {
+      expect(grau(n.id), `${n.id} com menos de 2 arestas — é ilha pelo invariante 1`).toBeGreaterThanOrEqual(2);
+    }
+    const liga = (de: string, para: string) => (m.edges ?? []).some((e) => e.from === de && e.to === para);
+    expect(liga("fnReativar", "itemCentral"), "a reativação não deixa rastro para uma pessoa revisar").toBe(true);
+    expect(liga("central", "fila"), "o aviso de reativação não leva à Fila").toBe(true);
+    expect(liga("operante", "motor"), "a régua única não chega ao motor da IA").toBe(true);
+  });
+
   it("o Jev está no mapa da escalação, com o laço de retorno", () => {
     // O caso concreto do DoD 13 para o Jev. O genérico cobra ≥1 aresta; o
     // invariante 7 pede o laço de retorno, e é ele que se nomeia aqui: a
@@ -202,6 +219,8 @@ describe("mapas de arquitetura — coerência interna", () => {
       "jevExecucoes",
       "jevManipulacao",
       "jevObservacoes",
+      "jevPedidos",
+      "jevFollowup",
     ]) {
       expect(grau(peca), `${peca} com menos de 2 arestas — é ilha pelo invariante 1`).toBeGreaterThanOrEqual(2);
     }
@@ -210,6 +229,13 @@ describe("mapas de arquitetura — coerência interna", () => {
     expect(liga("jevRota", "jevCartao"), "a rota do cartão não devolve nada à tela").toBe(true);
     // O laço da manipulação (onda 2): a observação gravada no turno volta ao cartão.
     expect(liga("jevObservacoes", "jevRota"), "a concordância da manipulação não chega à rota do cartão").toBe(true);
+    // O laço das tarefas em cascata (onda 3): os pedidos que o Jev percebe no
+    // worker de clima são gravados em jev_observacoes, que volta ao cartão.
+    expect(liga("jevPedidos", "jevObservacoes"), "os pedidos percebidos não chegam a jev_observacoes").toBe(true);
+    // O laço da resposta ao follow-up (onda 4): o estado da tarefa entra no
+    // turno do follow-up, e a observação dele vai a jev_observacoes, que volta ao cartão.
+    expect(liga("jevConfig", "jevFollowup"), "o estado da tarefa do follow-up não chega ao turno").toBe(true);
+    expect(liga("jevFollowup", "jevObservacoes"), "a resposta ao follow-up não chega a jev_observacoes").toBe(true);
   });
 
   it("o Jev está no mapa do turno, ao lado do roteador, com o laço de retorno", () => {
@@ -296,5 +322,54 @@ describe("o mapa do turno conhece todos os turnos", () => {
     for (const [kind, porque] of Object.entries(NAO_SAO_TURNO)) {
       expect(porque.length, `${kind} sem motivo escrito`).toBeGreaterThan(25);
     }
+  });
+});
+
+/**
+ * TODO CHAMADOR DO GATE DE ORÇAMENTO É PEÇA DO MAPA DO TETO.
+ *
+ * `aplicarOrcamento` deixou de ser privado do seam para que o worker de mídia
+ * recusasse com a MESMA régua — e o mapa seguiu mostrando só o turno chegando
+ * nele. Quem mede o raio de uma mudança no gate pelo mapa não enxergava a visão
+ * de imagem. Mesma lógica do caso dos kinds acima: o que se guarda é estrutural
+ * (cada arquivo que chama o gate tem nó com aresta até ele), nunca o texto.
+ */
+describe("o mapa do teto conhece todos os chamadores do gate", () => {
+  const RAIZES = ["lib", "workers", "app"];
+  const DEFINICAO = path.join("lib", "agent-engine", "edge", "llm", "run-model-call.ts");
+
+  const varrer = (dir: string): string[] =>
+    fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) return e.name === "node_modules" ? [] : varrer(p);
+      return /\.tsx?$/.test(e.name) && !/\.test\.tsx?$/.test(e.name) ? [p] : [];
+    });
+
+  it("cada arquivo que chama aplicarOrcamento tem nó ligado ao gate", () => {
+    const chamadores = RAIZES.flatMap((r) => varrer(path.join(process.cwd(), r)))
+      .map((p) => path.relative(process.cwd(), p))
+      .filter((p) => p !== DEFINICAO)
+      .filter((p) => /\baplicarOrcamento\(/.test(fs.readFileSync(p, "utf8")));
+    // Controle positivo: sem o worker de mídia, a varredura compararia com lista vazia.
+    expect(chamadores, "não achei chamador nenhum — ENSINE ESTE TESTE").toContain(
+      path.join("workers", "media-derive-worker.ts"),
+    );
+
+    const mapa = JSON.parse(
+      fs.readFileSync(path.join(DIR, "teto-de-orcamento.architecture.json"), "utf8"),
+    ) as { nodes: Array<{ id: string; label?: string }>; edges: Array<{ from: string; to: string }> };
+    const gate = mapa.nodes.find((n) => (n.label ?? "").includes("aplicarOrcamento"));
+    expect(gate, "o nó do gate sumiu do mapa do teto").toBeTruthy();
+
+    const ausentes = chamadores.filter((arquivo) => {
+      const nome = path.basename(arquivo).replace(/\.tsx?$/, "");
+      const nos = mapa.nodes.filter((n) => (n.label ?? "").includes(nome)).map((n) => n.id);
+      return !mapa.edges.some((e) => nos.includes(e.from) && e.to === gate!.id);
+    });
+    expect(
+      ausentes,
+      "arquivo que chama aplicarOrcamento sem nó (com o nome do arquivo no label) " +
+        "e aresta até o gate no mapa do teto.\n",
+    ).toEqual([]);
   });
 });

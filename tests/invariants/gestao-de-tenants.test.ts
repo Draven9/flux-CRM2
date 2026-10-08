@@ -2,19 +2,19 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
 
 /**
- * Gestão de tenants pelo admin da plataforma (migration 0492).
+ * Gestão de tenants pelo admin da plataforma (migration 0650, distribuição Flux).
  *
- * Duas promessas que só o Postgres consegue provar, porque moram em função
- * SECURITY DEFINER, policy e cascata de FK:
+ * A promessa que só o Postgres consegue provar, porque mora em função
+ * SECURITY DEFINER e cascata de FK:
  *
- * 1. SUSPENDER CORTA. `fn_user_org_ids()` e `fn_user_role_in_org()` deixam de
- *    devolver a organização suspensa. Até a 0492 elas ignoravam
- *    `organizations.status`, e o JWT do membro seguia lendo tudo pelo PostgREST
- *    (auditoria de 28/09/2026, P3). Reativar devolve o acesso.
- * 2. EXCLUIR É COMPLETO. `fn_excluir_organizacao` apaga a organização inteira
- *    numa transação, inclusive o caso que derrubava um `delete` avulso (lead com
- *    dono IA → `event_log` apontando para a org já apagada), guarda a lápide na
- *    auditoria e diz quais logins ficaram sem organização.
+ * EXCLUIR É COMPLETO. `fn_excluir_organizacao` apaga a organização inteira
+ * numa transação, inclusive o caso que derrubava um `delete` avulso (lead com
+ * dono IA → `event_log` apontando para a org já apagada), guarda a lápide na
+ * auditoria e diz quais logins ficaram sem organização.
+ *
+ * A suspensão não é medida aqui: ela é a da 0501 do produto, com gate próprio
+ * em `tests/invariants/org-suspensa.test.ts`. O corte da RLS que esta suíte
+ * cobrava saiu na sincronização com o produto v1.77.0.
  */
 const container = process.env.TEST_DB_CONTAINER;
 if (!container) {
@@ -111,67 +111,6 @@ afterAll(async () => {
     [USER_A, USER_SO_X, USER_X_E_B, ADMIN_PLAT],
   ]);
   await pool.end();
-});
-
-describe("suspender corta o acesso pela RLS", () => {
-  it("controle: a organização ATIVA é alcançável pelo membro", async () => {
-    await status(ORG_A, "active");
-    const ids = await comoUsuario<{ id: string }>(USER_A, "select public.fn_user_org_ids() as id");
-    expect(ids.map((r) => r.id)).toContain(ORG_A);
-    const contatos = await comoUsuario<{ n: string }>(
-      USER_A,
-      "select count(*) as n from contacts where organization_id = $1",
-      [ORG_A],
-    );
-    expect(Number(contatos[0]!.n)).toBeGreaterThan(0);
-  });
-
-  it("suspensa: some de fn_user_org_ids, o papel vira nulo e as linhas ficam invisíveis", async () => {
-    await status(ORG_A, "suspended");
-    const ids = await comoUsuario<{ id: string }>(USER_A, "select public.fn_user_org_ids() as id");
-    expect(ids.map((r) => r.id)).not.toContain(ORG_A);
-
-    const papel = await comoUsuario<{ r: string | null }>(
-      USER_A,
-      "select public.fn_user_role_in_org($1) as r",
-      [ORG_A],
-    );
-    expect(papel[0]!.r).toBeNull();
-
-    const contatos = await comoUsuario<{ n: string }>(
-      USER_A,
-      "select count(*) as n from contacts where organization_id = $1",
-      [ORG_A],
-    );
-    expect(Number(contatos[0]!.n)).toBe(0);
-
-    // Escrita também: a policy de INSERT usa o mesmo helper.
-    await expect(
-      comoUsuario(USER_A, "insert into contacts (organization_id, display_name) values ($1, 'x')", [
-        ORG_A,
-      ]),
-    ).rejects.toThrow(/row-level security/i);
-  });
-
-  it("o vínculo continua legível pelo próprio usuário — a aplicação sabe mostrar a tela de suspensão", async () => {
-    await status(ORG_A, "suspended");
-    const vinculos = await comoUsuario<{ organization_id: string }>(
-      USER_A,
-      "select organization_id from user_organizations where user_id = $1",
-      [USER_A],
-    );
-    expect(vinculos.map((v) => v.organization_id)).toContain(ORG_A);
-  });
-
-  it("reativar devolve o acesso", async () => {
-    await status(ORG_A, "active");
-    const papel = await comoUsuario<{ r: string | null }>(
-      USER_A,
-      "select public.fn_user_role_in_org($1) as r",
-      [ORG_A],
-    );
-    expect(papel[0]!.r).toBe("admin");
-  });
 });
 
 describe("fn_excluir_organizacao", () => {

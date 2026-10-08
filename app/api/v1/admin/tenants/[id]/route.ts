@@ -52,6 +52,7 @@ export async function GET(
       locale,
       currency,
       media_retention_days,
+      media_retention_enforced,
       dpo_email,
       privacy_policy_url
     `,

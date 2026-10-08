@@ -26,6 +26,7 @@ export interface TenantOrganization {
   locale: string | null;
   currency: string | null;
   media_retention_days: number | null;
+  media_retention_enforced: boolean | null;
   dpo_email: string | null;
   privacy_policy_url: string | null;
 }

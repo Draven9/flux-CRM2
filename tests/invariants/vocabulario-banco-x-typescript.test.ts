@@ -422,6 +422,40 @@ const PARES: Array<{
     arquivo: "lib/schemas/team.ts",
     simbolo: "ROLES",
   },
+  {
+    tabela: "organizations",
+    coluna: "suspended_kind",
+    // lib/organizacao/operante.ts → TIPOS_DE_SUSPENSAO (tupla `as const`). Nasce
+    // no MESMO commit da migration 0501 — a lição desta lista. O tipo decide qual
+    // porta reativa: `/reactivate` só a administrativa; a de cobrança só por
+    // pagamento, prazo ou isenção. Um tipo só no CHECK deixaria a org presa numa
+    // suspensão que nenhuma porta reconhece; só no TypeScript viraria `23514`
+    // dentro de fn_suspender_organizacao.
+    arquivo: "lib/organizacao/operante.ts",
+    simbolo: "TIPOS_DE_SUSPENSAO",
+  },
+  {
+    tabela: "before_send_traces",
+    coluna: "tipo_envio",
+    // lib/agent-engine/guardrails/before-send.ts → TipoDeEnvio. Migration 0535
+    // (#2227, #2112): o trace diz se o envio vetado era resposta ou disparo, e a
+    // rota de retenção escolhe a janela por ele. `null` (linha anterior à 0535)
+    // passa no CHECK e é lido como resposta.
+    arquivo: "lib/agent-engine/guardrails/before-send.ts",
+    simbolo: "TipoDeEnvio",
+  },
+  {
+    tabela: "campaign_recipients",
+    coluna: "status",
+    // lib/campanhas/tipos.ts → STATUS_DO_DESTINATARIO (tupla `as const`).
+    // Nasce com a migration 0563 (spec 21, fatia 1), que acrescenta `personal`:
+    // a saída própria de quem vira pessoal — nunca `opted_out`, para a taxa de
+    // "pediu para parar" não contar quem nunca pediu (D7). Um status só no
+    // CHECK viraria `23514` no UPDATE da rota de marcar; só no TypeScript
+    // viraria linha que o banco recusa num caminho que ninguém exercita em dev.
+    arquivo: "lib/campanhas/tipos.ts",
+    simbolo: "STATUS_DO_DESTINATARIO",
+  },
 ];
 
 /** Tira um nível de parênteses externos, se ele envolver a expressão inteira. */
